@@ -18,11 +18,10 @@ package org.apache.fontbox.cff;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
-import org.apache.fontbox.util.Charsets;
 
 /**
  * This class contains some functionality to read a byte buffer.
@@ -80,7 +79,7 @@ public class DataInput
      */
     public String getString() throws IOException
     {
-        return new String(inputBuffer, Charsets.ISO_8859_1);
+        return new String(inputBuffer, StandardCharsets.ISO_8859_1);
     }
 
     /**
@@ -98,7 +97,7 @@ public class DataInput
         } 
         catch (RuntimeException re)
         {
-            LOG.debug("An error occured reading a byte - returning -1", re);
+            LOG.debug("An error occurred reading a byte - returning -1", re);
             return -1;
         }
     }
@@ -205,7 +204,7 @@ public class DataInput
         } 
         catch (RuntimeException re)
         {
-            LOG.debug("An error occured reading an int - returning -1", re);
+            LOG.debug("An error occurred reading an int - returning -1", re);
             return -1;
         }
     }
@@ -214,12 +213,11 @@ public class DataInput
     {
         try
         {
-            int value = inputBuffer[bufferPosition + offset] & 0xff;
-            return value;
+            return inputBuffer[bufferPosition + offset] & 0xff;
         }
         catch (RuntimeException re)
         {
-            LOG.debug("An error occured peeking at offset " + offset + " - returning -1", re);
+            LOG.debug("An error occurred peeking at offset " + offset + " - returning -1", re);
             return -1;
         }
     }

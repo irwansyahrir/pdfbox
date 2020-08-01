@@ -16,12 +16,12 @@
  */
 package org.apache.fontbox.ttf;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -207,9 +207,8 @@ public final class OpenTypeScript
             {"Yi", new String[] { "yi  " }}
         };
         UNICODE_SCRIPT_TO_OPENTYPE_TAG_MAP = new HashMap<>(table.length);
-        for (Object obj : table)
+        for (Object[] array : table)
         {
-            Object[] array = (Object[]) obj;
             UNICODE_SCRIPT_TO_OPENTYPE_TAG_MAP.put((String) array[0], (String[]) array[1]);
         }
     }
@@ -219,17 +218,11 @@ public final class OpenTypeScript
 
     static
     {
-        String path = "org/apache/fontbox/unicode/Scripts.txt";
-        try (InputStream input = OpenTypeScript.class.getClassLoader().getResourceAsStream(path))
+        String path = "/org/apache/fontbox/unicode/Scripts.txt";
+        try (InputStream resourceAsStream = OpenTypeScript.class.getResourceAsStream(path);
+             InputStream input = new BufferedInputStream(resourceAsStream))
         {
-            if (input != null)
-            {
-                parseScriptsFile(input);
-            }
-            else
-            {
-                LOG.warn("Could not find '" + path + "', mirroring char map will be empty: ");
-            }
+            parseScriptsFile(input);
         }
         catch (IOException e)
         {
@@ -244,14 +237,7 @@ public final class OpenTypeScript
 
     private static void parseScriptsFile(InputStream inputStream) throws IOException
     {
-        Map<int[], String> unicodeRanges = new TreeMap<>(new Comparator<int[]>()
-        {
-            @Override
-            public int compare(int[] o1, int[] o2)
-            {
-                return Integer.compare(o1[0], o2[0]);
-            };
-        });
+        Map<int[], String> unicodeRanges = new TreeMap<>((o1, o2) -> Integer.compare(o1[0], o2[0]));
         try (LineNumberReader rd = new LineNumberReader(new InputStreamReader(inputStream)))
         {
             int[] lastRange = { Integer.MIN_VALUE, Integer.MIN_VALUE };

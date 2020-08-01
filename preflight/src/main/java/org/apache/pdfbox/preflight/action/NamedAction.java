@@ -59,15 +59,15 @@ public class NamedAction extends AbstractActionManager
     /*
      * (non-Javadoc)
      * 
-     * @see net.awl.edoc.pdfa.validation.actions.AbstractActionManager#valid(java.util .List)
+     * @see org.apache.pdfbox.preflight.action.AbstractActionManager#valid(java.util .List)
      */
     @Override
     protected boolean innerValid()
     {
-        String n = this.actionDictionnary.getNameAsString(COSName.N);
+        String n = this.actionDictionary.getNameAsString(COSName.N);
 
         // ---- N entry is mandatory
-        if (n == null || "".equals(n))
+        if (n == null || n.isEmpty())
         {
             context.addValidationError(new ValidationError(ERROR_ACTION_MISING_KEY,
                     "N entry is mandatory for the NamedActions"));

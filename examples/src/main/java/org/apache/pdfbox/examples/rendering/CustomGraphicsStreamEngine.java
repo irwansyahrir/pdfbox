@@ -20,6 +20,8 @@ package org.apache.pdfbox.examples.rendering;
 import java.awt.geom.Point2D;
 import java.io.File;
 import java.io.IOException;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.cos.COSArray;
@@ -42,19 +44,6 @@ import org.apache.pdfbox.util.Vector;
  */
 public class CustomGraphicsStreamEngine extends PDFGraphicsStreamEngine
 {
-    public static void main(String[] args) throws IOException
-    {
-        File file = new File("src/main/resources/org/apache/pdfbox/examples/rendering/",
-                             "custom-render-demo.pdf");
-
-        try (PDDocument doc = PDDocument.load(file))
-        {
-            PDPage page = doc.getPage(0);
-            CustomGraphicsStreamEngine engine = new CustomGraphicsStreamEngine(page);
-            engine.run();
-        }
-    }
-    
     /**
      * Constructor.
      *
@@ -65,6 +54,19 @@ public class CustomGraphicsStreamEngine extends PDFGraphicsStreamEngine
         super(page);
     }
 
+    public static void main(String[] args) throws IOException
+    {
+        File file = new File("src/main/resources/org/apache/pdfbox/examples/rendering/",
+                             "custom-render-demo.pdf");
+
+        try (PDDocument doc = Loader.loadPDF(file))
+        {
+            PDPage page = doc.getPage(0);
+            CustomGraphicsStreamEngine engine = new CustomGraphicsStreamEngine(page);
+            engine.run();
+        }
+    }
+    
     /**
      * Runs the engine on the current page.
      *
@@ -83,7 +85,7 @@ public class CustomGraphicsStreamEngine extends PDFGraphicsStreamEngine
     @Override
     public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) throws IOException
     {
-        System.out.printf("appendRectangle %.2f %.2f, %.2f %.2f, %.2f %.2f, %.2f %.2f\n",
+        System.out.printf("appendRectangle %.2f %.2f, %.2f %.2f, %.2f %.2f, %.2f %.2f%n",
                 p0.getX(), p0.getY(), p1.getX(), p1.getY(),
                 p2.getX(), p2.getY(), p3.getX(), p3.getY());
     }
@@ -103,19 +105,19 @@ public class CustomGraphicsStreamEngine extends PDFGraphicsStreamEngine
     @Override
     public void moveTo(float x, float y) throws IOException
     {
-        System.out.printf("moveTo %.2f %.2f\n", x, y);
+        System.out.printf("moveTo %.2f %.2f%n", x, y);
     }
 
     @Override
     public void lineTo(float x, float y) throws IOException
     {
-        System.out.printf("lineTo %.2f %.2f\n", x, y);
+        System.out.printf("lineTo %.2f %.2f%n", x, y);
     }
 
     @Override
     public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3) throws IOException
     {
-        System.out.printf("curveTo %.2f %.2f, %.2f %.2f, %.2f %.2f\n", x1, y1, x2, y2, x3, y3);
+        System.out.printf("curveTo %.2f %.2f, %.2f %.2f, %.2f %.2f%n", x1, y1, x2, y2, x3, y3);
     }
 
     @Override
@@ -187,11 +189,11 @@ public class CustomGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * Overridden from PDFStreamEngine.
      */
     @Override
-    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                             Vector displacement) throws IOException
+    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement)
+            throws IOException
     {
-        System.out.print(unicode);
-        super.showGlyph(textRenderingMatrix, font, code, unicode, displacement);
+        System.out.print("showGlyph " + code);
+        super.showGlyph(textRenderingMatrix, font, code, displacement);
     }
     
     // NOTE: there are may more methods in PDFStreamEngine which can be overridden here too.

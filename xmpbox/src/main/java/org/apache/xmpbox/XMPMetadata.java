@@ -66,7 +66,7 @@ public class XMPMetadata
     private TypeMapping typeMapping;
 
     /**
-     * Contructor of an empty default XMPMetaData.
+     * Constructor of an empty default XMPMetaData.
      * 
      */
     protected XMPMetadata()
@@ -169,18 +169,13 @@ public class XMPMetadata
     }
 
     /**
-     * Get All Schemas declared in this metadata representation.
+     * Get all Schemas declared in this metadata representation.
      * 
      * @return List of declared schemas
      */
     public List<XMPSchema> getAllSchemas()
     {
-        List<XMPSchema> schem = new ArrayList<>();
-        for (XMPSchema schema : schemas)
-        {
-            schem.add(schema);
-        }
-        return schem;
+        return new ArrayList<>(schemas);
     }
 
     /**

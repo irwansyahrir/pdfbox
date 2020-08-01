@@ -18,15 +18,17 @@ package org.apache.pdfbox.cos;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
-import java.util.LinkedHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.Map.Entry;
+import java.util.function.BiConsumer;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -56,7 +58,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     /**
      * The name-value pairs of this dictionary. The pairs are kept in the order they were added to the dictionary.
      */
-//    protected Map<COSName, COSBase> items = new LinkedHashMap<COSName, COSBase>();
     protected Map<COSName, COSBase> items = new SmallMap<>();
 
     /**
@@ -65,7 +66,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     public COSDictionary()
     {
         // default constructor
-        debugInstanceCount();
     }
 
     /**
@@ -76,65 +76,8 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     public COSDictionary(COSDictionary dict)
     {
         items.putAll(dict.items);
-        
-        debugInstanceCount();
     }
 
-    private static final boolean DO_DEBUG_INSTANCE_COUNT = false;
-    private static final List<WeakReference<COSDictionary>> DICT_INSTANCES = 
-            DO_DEBUG_INSTANCE_COUNT ? new ArrayList<WeakReference<COSDictionary>>() : null;
-
-    /**
-     * Only for memory debugging purposes (especially PDFBOX-3284): holds weak
-     * references to all instances and prints after each 10,000th instance a
-     * statistic across all instances showing how many instances we have per
-     * dictionary size (item count).
-     * This is to show that there can be a large number of COSDictionary instances
-     * but each having only few items, thus using a {@link LinkedHashMap} is a
-     * waste of memory resources.
-     * 
-     * <p>This method should be removed if further testing of COSDictionary uses
-     * is not needed anymore.</p>
-     */
-    private void debugInstanceCount()
-    {
-        if (DO_DEBUG_INSTANCE_COUNT)
-        {
-            synchronized (DICT_INSTANCES)
-            {
-                DICT_INSTANCES.add(new WeakReference<>(this));
-                // print statistics at each 10,000th instance
-                if (DICT_INSTANCES.size() % 10000 == 0)
-                {
-                    int[] sizeCount = new int[100];
-                    for (WeakReference<COSDictionary> dict : DICT_INSTANCES)
-                    {
-                        COSDictionary curDict = dict.get();
-                        if (curDict != null)
-                        {
-                            int sizeIdx = curDict.size();
-                            sizeCount[sizeIdx < sizeCount.length ? sizeIdx
-                                    : sizeCount.length - 1]++;
-                        }
-                    }
-                    // find biggest
-                    int maxIdx = -1;
-                    int max = 0;
-                    for (int sizeIdx = 0; sizeIdx < sizeCount.length; ++sizeIdx)
-                    {
-                        if (max < sizeCount[sizeIdx])
-                        {
-                            maxIdx = sizeIdx;
-                            max = sizeCount[sizeIdx];
-                        }
-                    }
-                    System.out.println("COSDictionary: dictionary size occurrences (max idx: " + maxIdx + "): " + Arrays.toString(sizeCount));
-                }
-            }
-        }
-    }
-    
-    
     /**
      * @see java.util.Map#containsValue(java.lang.Object)
      *
@@ -221,26 +164,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         if (retval == null && secondKey != null)
         {
             retval = getDictionaryObject(secondKey);
-        }
-        return retval;
-    }
-
-    /**
-     * This is a special case of getDictionaryObject that takes multiple keys, it will handle the situation where
-     * multiple keys could get the same value, ie if either CS or ColorSpace is used to get the colorspace. This will
-     * get an object from this dictionary. If the object is a reference then it will dereference it and get it from the
-     * document. If the object is COSNull then null will be returned.
-     *
-     * @param keyList The list of keys to find a value.
-     *
-     * @return The object that matches the key.
-     */
-    public COSBase getDictionaryObject(String[] keyList)
-    {
-        COSBase retval = null;
-        for (int i = 0; i < keyList.length && retval == null; i++)
-        {
-            retval = getDictionaryObject(COSName.getPDFName(keyList[i]));
         }
         return retval;
     }
@@ -625,6 +548,92 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         if (name instanceof COSName)
         {
             return (COSName) name;
+        }
+        return null;
+    }
+
+    /**
+     * This is a convenience method that will get the dictionary object that is expected to be a COSObject. Null is
+     * returned if the entry does not exist in the dictionary.
+     *
+     * @param key The key to the item in the dictionary.
+     * @return The COSObject.
+     */
+    public COSObject getCOSObject(COSName key)
+    {
+        COSBase object = getItem(key);
+        if (object instanceof COSObject)
+        {
+            return (COSObject) object;
+        }
+        return null;
+    }
+
+    /**
+     * This is a convenience method that will get the dictionary object that is expected to be a COSDictionary. Null is
+     * returned if the entry does not exist in the dictionary.
+     *
+     * @param key The key to the item in the dictionary.
+     * @return The COSDictionary.
+     */
+    public COSDictionary getCOSDictionary(COSName key)
+    {
+        COSBase dictionary = getDictionaryObject(key);
+        if (dictionary instanceof COSDictionary)
+        {
+            return (COSDictionary) dictionary;
+        }
+        return null;
+    }
+
+    /**
+     * This is a convenience method that will get the dictionary object that is expected to be a COSDictionary. Null is
+     * returned if the entry does not exist in the dictionary.
+     *
+     * @param firstKey The first key to the item in the dictionary.
+     * @param secondKey The second key to the item in the dictionary.
+     * @return The COSDictionary.
+     */
+    public COSDictionary getCOSDictionary(COSName firstKey, COSName secondKey)
+    {
+        COSBase dictionary = getDictionaryObject(firstKey, secondKey);
+        if (dictionary instanceof COSDictionary)
+        {
+            return (COSDictionary) dictionary;
+        }
+        return null;
+    }
+
+    /**
+     * This is a convenience method that will get the dictionary object that is expected to be a COSStream. Null is
+     * returned if the entry does not exist in the dictionary.
+     *
+     * @param key The key to the item in the dictionary.
+     * @return The COSStream.
+     */
+    public COSStream getCOSStream(COSName key)
+    {
+        COSBase base = getDictionaryObject(key);
+        if (base instanceof COSStream)
+        {
+            return (COSStream) base;
+        }
+        return null;
+    }
+
+    /**
+     * This is a convenience method that will get the dictionary object that is expected to be a COSArray. Null is
+     * returned if the entry does not exist in the dictionary.
+     *
+     * @param key The key to the item in the dictionary.
+     * @return The COSArray.
+     */
+    public COSArray getCOSArray(COSName key)
+    {
+        COSBase array = getDictionaryObject(key);
+        if (array instanceof COSArray)
+        {
+            return (COSArray) array;
         }
         return null;
     }
@@ -1086,25 +1095,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      * This is a convenience method that will get the dictionary object that is expected to be an integer. If the
      * dictionary value is null then the default value will be returned.
      *
-     * @param keyList The key to the item in the dictionary.
-     * @param defaultValue The value to return if the dictionary item is null.
-     * @return The integer value.
-     */
-    public int getInt(String[] keyList, int defaultValue)
-    {
-        int retval = defaultValue;
-        COSBase obj = getDictionaryObject(keyList);
-        if (obj instanceof COSNumber)
-        {
-            retval = ((COSNumber) obj).intValue();
-        }
-        return retval;
-    }
-
-    /**
-     * This is a convenience method that will get the dictionary object that is expected to be an integer. If the
-     * dictionary value is null then the default value will be returned.
-     *
      * @param key The key to the item in the dictionary.
      * @param defaultValue The value to return if the dictionary item is null.
      * @return The integer value.
@@ -1183,25 +1173,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     public long getLong(COSName key)
     {
         return getLong(key, -1L);
-    }
-
-    /**
-     * This is a convenience method that will get the dictionary object that is expected to be an long. If the
-     * dictionary value is null then the default value will be returned.
-     *
-     * @param keyList The key to the item in the dictionary.
-     * @param defaultValue The value to return if the dictionary item is null.
-     * @return The long value.
-     */
-    public long getLong(String[] keyList, long defaultValue)
-    {
-        long retval = defaultValue;
-        COSBase obj = getDictionaryObject(keyList);
-        if (obj instanceof COSNumber)
-        {
-            retval = ((COSNumber) obj).longValue();
-        }
-        return retval;
     }
 
     /**
@@ -1385,6 +1356,17 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     }
 
     /**
+     * Convenience method that calls
+     * {@link Map#forEach(java.util.function.BiConsumer) Map.forEach(BiConsumer)}.
+     *
+     * @param action
+     */
+    public void forEach(BiConsumer<? super COSName, ? super COSBase> action)
+    {
+        items.forEach(action);
+    }
+
+    /**
      * This will get all of the values for the dictionary.
      *
      * @return All the values for the dictionary.
@@ -1428,18 +1410,17 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      */
     public void addAll(COSDictionary dic)
     {
-        for (Map.Entry<COSName, COSBase> entry : dic.entrySet())
+        dic.forEach((key, value) ->
         {
             /*
              * If we're at a second trailer, we have a linearized pdf file, meaning that the first Size entry represents
              * all of the objects so we don't need to grab the second.
              */
-            if (!entry.getKey().getName().equals("Size")
-                    || !items.containsKey(COSName.getPDFName("Size")))
+            if (!COSName.SIZE.equals(key) || !items.containsKey(COSName.SIZE))
             {
-                setItem(entry.getKey(), entry.getValue());
+                setItem(key, value);
             }
-        }
+        });
     }
 
     /**
@@ -1466,7 +1447,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
 
     /**
      * Nice method, gives you every object you want Arrays works properly too. Try "P/Annots/[k]/Rect" where k means the
-     * index of the Annotsarray.
+     * index of the Annots array.
      *
      * @param objPath the relative path to the object.
      * @return the object
@@ -1504,15 +1485,73 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      * {@inheritDoc}
      */
     @Override
+    public boolean equals(Object o) {
+        if (o == this)
+        {
+            return true;
+        }
+
+        if (o == null || !(o.getClass() == COSDictionary.class))
+        {
+            return false;
+        }
+
+        COSDictionary toBeCompared = (COSDictionary) o;
+
+        if (toBeCompared.size() != size())
+        {
+            return false;
+        }
+
+        Iterator<Entry<COSName, COSBase>> iter = entrySet().iterator();
+        while (iter.hasNext())
+        {
+            Entry<COSName, COSBase> entry = iter.next();
+            COSName key = entry.getKey();
+            COSBase value = entry.getValue();
+
+            if (!toBeCompared.containsKey(key)) 
+            {
+                return false;
+            }
+            else if (value == null)
+            {
+                if (toBeCompared.getItem(key) != null)
+                {
+                    return false;
+                }
+            }
+            else if (!value.equals(toBeCompared.getItem(key)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+        return Objects.hash(items, needToBeUpdated);
+    }
+    
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public String toString()
     {
         try
         {
-            return getDictionaryString(this, new ArrayList<COSBase>());
+            return getDictionaryString(this, new ArrayList<>());
         }
         catch (IOException e)
         {
-            LOG.debug("An exception occured trying - returning error message instead", e);
+            LOG.debug("An exception occurred trying - returning error message instead", e);
             return "COSDictionary{" + e.getMessage() + "}";
         }
     }
@@ -1551,10 +1590,25 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
             }
             return sb.toString();
         }
+        if (base instanceof COSArray)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.append("COSArray{");
+            for (COSBase x : ((COSArray) base).toList())
+            {
+                sb.append(getDictionaryString(x, objs));
+                sb.append(";");
+            }
+            sb.append("}");
+            return sb.toString();
+        }
         if (base instanceof COSObject)
         {
             COSObject obj = (COSObject) base;
-            return "COSObject{" + getDictionaryString(obj.getObject(), objs) + "}";
+            return "COSObject{"
+                    + getDictionaryString(
+                            obj.isObjectNull() ? COSNull.NULL : obj.getObject(), objs)
+                    + "}";
         }
         return base.toString();
     }

@@ -29,6 +29,8 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDFont;
@@ -56,7 +58,7 @@ public class CustomPageDrawer
         File file = new File("src/main/resources/org/apache/pdfbox/examples/rendering/",
                              "custom-render-demo.pdf");
         
-        try (PDDocument doc = PDDocument.load(file))
+        try (PDDocument doc = Loader.loadPDF(file))
         {
             PDFRenderer renderer = new MyPDFRenderer(doc);
             BufferedImage image = renderer.renderImage(0);
@@ -97,15 +99,12 @@ public class CustomPageDrawer
         @Override
         protected Paint getPaint(PDColor color) throws IOException
         {
-            // if this is the non-stroking color
-            if (getGraphicsState().getNonStrokingColor() == color)
+            // if this is the non-stroking color, find red, ignoring alpha channel
+            if (getGraphicsState().getNonStrokingColor() == color &&
+                color.toRGB() == (Color.RED.getRGB() & 0x00FFFFFF))
             {
-                // find red, ignoring alpha channel
-                if (color.toRGB() == (Color.RED.getRGB() & 0x00FFFFFF))
-                {
-                    // replace it with blue
-                    return Color.BLUE;
-                }
+                // replace it with blue
+                return Color.BLUE;
             }
             return super.getPaint(color);
         }
@@ -114,11 +113,11 @@ public class CustomPageDrawer
          * Glyph bounding boxes.
          */
         @Override
-        protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                                 Vector displacement) throws IOException
+        protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code,
+                Vector displacement) throws IOException
         {
             // draw glyph
-            super.showGlyph(textRenderingMatrix, font, code, unicode, displacement);
+            super.showGlyph(textRenderingMatrix, font, code, displacement);
             
             // bbox in EM -> user units
             Shape bbox = new Rectangle2D.Float(0, 0, font.getWidth(code) / 1000, 1);

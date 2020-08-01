@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentNameDictionary;
 import org.apache.pdfbox.pdmodel.PDEmbeddedFilesNameTreeNode;
@@ -57,61 +59,62 @@ public final class ExtractEmbeddedFiles
             usage();
             System.exit(1);
         }
+
+        File pdfFile = new File(args[0]);
+        String filePath = pdfFile.getParent() + System.getProperty("file.separator");
+        try (PDDocument document = Loader.loadPDF(pdfFile))
+        {
+            PDDocumentNameDictionary namesDictionary =
+                    new PDDocumentNameDictionary(document.getDocumentCatalog());
+            PDEmbeddedFilesNameTreeNode efTree = namesDictionary.getEmbeddedFiles();
+            if (efTree != null)
+            {
+                extractFilesFromEFTree(efTree, filePath);
+            }
+
+            // extract files from page annotations
+            for (PDPage page : document.getPages())
+            {
+                extractFilesFromPage(page, filePath);
+            }
+        }
+    }
+
+    private static void extractFilesFromPage(PDPage page, String filePath) throws IOException
+    {
+        for (PDAnnotation annotation : page.getAnnotations())
+        {
+            if (annotation instanceof PDAnnotationFileAttachment)
+            {
+                PDAnnotationFileAttachment annotationFileAttachment = (PDAnnotationFileAttachment) annotation;
+                PDFileSpecification fileSpec = annotationFileAttachment.getFile();
+                if (fileSpec instanceof PDComplexFileSpecification)
+                {
+                    PDComplexFileSpecification complexFileSpec = (PDComplexFileSpecification) fileSpec;
+                    PDEmbeddedFile embeddedFile = getEmbeddedFile(complexFileSpec);
+                    if (embeddedFile != null)
+                    {
+                        extractFile(filePath, complexFileSpec.getFilename(), embeddedFile);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void extractFilesFromEFTree(PDEmbeddedFilesNameTreeNode efTree, String filePath) throws IOException
+    {
+        Map<String, PDComplexFileSpecification> names = efTree.getNames();
+        if (names != null)
+        {
+            extractFiles(names, filePath);
+        }
         else
         {
-            PDDocument document = null;
-            try
+            List<PDNameTreeNode<PDComplexFileSpecification>> kids = efTree.getKids();
+            for (PDNameTreeNode<PDComplexFileSpecification> node : kids)
             {
-                File pdfFile = new File(args[0]);
-                String filePath = pdfFile.getParent() + System.getProperty("file.separator");
-                document = PDDocument.load(pdfFile );
-                PDDocumentNameDictionary namesDictionary = 
-                        new PDDocumentNameDictionary( document.getDocumentCatalog() );
-                PDEmbeddedFilesNameTreeNode efTree = namesDictionary.getEmbeddedFiles();
-                if (efTree != null)
-                {
-                    Map<String, PDComplexFileSpecification> names = efTree.getNames();
-                    if (names != null)
-                    {
-                        extractFiles(names, filePath);
-                    }
-                    else
-                    {
-                        List<PDNameTreeNode<PDComplexFileSpecification>> kids = efTree.getKids();
-                        for (PDNameTreeNode<PDComplexFileSpecification> node : kids)
-                        {
-                            names = node.getNames();
-                            extractFiles(names, filePath);
-                        }
-                    }
-                }
-                
-                // extract files from annotations
-                for (PDPage page : document.getPages())
-                {
-                    for (PDAnnotation annotation : page.getAnnotations())
-                    {
-                        if (annotation instanceof PDAnnotationFileAttachment)
-                        {
-                            PDAnnotationFileAttachment annotationFileAttachment = (PDAnnotationFileAttachment) annotation;
-                            PDFileSpecification fileSpec = annotationFileAttachment.getFile();
-                            if (fileSpec instanceof PDComplexFileSpecification)
-                            {
-                                PDComplexFileSpecification complexFileSpec = (PDComplexFileSpecification) fileSpec;
-                                PDEmbeddedFile embeddedFile = getEmbeddedFile(complexFileSpec);
-                                extractFile(filePath, complexFileSpec.getFilename(), embeddedFile);
-                            }
-                        }
-                    }
-                }
-                
-            }
-            finally
-            {
-                if( document != null )
-                {
-                    document.close();
-                }
+                names = node.getNames();
+                extractFiles(names, filePath);
             }
         }
     }
@@ -121,10 +124,12 @@ public final class ExtractEmbeddedFiles
     {
         for (Entry<String, PDComplexFileSpecification> entry : names.entrySet())
         {
-            String filename = entry.getKey();
             PDComplexFileSpecification fileSpec = entry.getValue();
             PDEmbeddedFile embeddedFile = getEmbeddedFile(fileSpec);
-            extractFile(filePath, filename, embeddedFile);
+            if (embeddedFile != null)
+            {
+                extractFile(filePath, fileSpec.getFilename(), embeddedFile);
+            }
         }
     }
 

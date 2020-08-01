@@ -16,6 +16,7 @@
 package org.apache.pdfbox.debugger.ui;
 
 import java.awt.Color;
+import java.awt.Container;
 import java.awt.Frame;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -35,20 +36,10 @@ import javax.swing.text.StyledDocument;
  *
  * @author John Hewson
  */
+@SuppressWarnings({"serial","squid:MaximumInheritanceDepth"})
 public class LogDialog extends JDialog
 {
     private static LogDialog instance;
-    
-    public static void init(Frame owner, JLabel logLabel)
-    {
-        instance = new LogDialog(owner, logLabel);
-    }
-
-    public static LogDialog instance()
-    {
-        return instance;
-    }
-
     private final JLabel logLabel;
     private final JTextPane textPane;
     private final JScrollPane scrollPane;
@@ -57,7 +48,7 @@ public class LogDialog extends JDialog
     private int warnCount = 0;
     private int otherCount = 0;
     private int exceptionCount = 0;
-    
+
     private LogDialog(Frame owner, JLabel logLabel)
     {
         super(owner);
@@ -69,7 +60,17 @@ public class LogDialog extends JDialog
         
         this.pack();
     }
-    
+
+    public static void init(Frame owner, JLabel logLabel)
+    {
+        instance = new LogDialog(owner, logLabel);
+    }
+
+    public static LogDialog instance()
+    {
+        return instance;
+    }
+
     public void log(String name, String level, Object o, Throwable throwable)
     {
         StyledDocument doc = textPane.getStyledDocument();
@@ -122,7 +123,7 @@ public class LogDialog extends JDialog
         StyleConstants.setForeground(nameStyle, new Color(0x6A6A6A));
 
         String shortName = name.substring(name.lastIndexOf('.') + 1);
-        String message = o.toString();
+        String message = o == null ? "(null)" : o.toString();
         
         if (throwable != null)
         {
@@ -199,5 +200,19 @@ public class LogDialog extends JDialog
         exceptionCount = 0;
         textPane.setText("");
         logLabel.setText("");
+    }
+
+    // these two just to avoid the "overridable method call in constructor" warning
+
+    @Override
+    public final Container getContentPane()
+    {
+        return super.getContentPane();
+    }
+
+    @Override
+    public final void pack()
+    {
+        super.pack();
     }
 }

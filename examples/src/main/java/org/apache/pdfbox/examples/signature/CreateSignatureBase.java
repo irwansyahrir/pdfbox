@@ -27,13 +27,10 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
-import java.util.List;
 
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
-import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaCertStore;
 import org.bouncycastle.cms.CMSException;
 import org.bouncycastle.cms.CMSSignedData;
@@ -43,7 +40,6 @@ import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
-import org.bouncycastle.util.Store;
 
 public abstract class CreateSignatureBase implements SignatureInterface
 {
@@ -73,23 +69,23 @@ public abstract class CreateSignatureBase implements SignatureInterface
         Enumeration<String> aliases = keystore.aliases();
         String alias;
         Certificate cert = null;
-        while (aliases.hasMoreElements())
+        while (cert == null && aliases.hasMoreElements())
         {
             alias = aliases.nextElement();
             setPrivateKey((PrivateKey) keystore.getKey(alias, pin));
             Certificate[] certChain = keystore.getCertificateChain(alias);
-            if (certChain == null)
+            if (certChain != null)
             {
-                continue;
+                setCertificateChain(certChain);
+                cert = certChain[0];
+                if (cert instanceof X509Certificate)
+                {
+                    // avoid expired certificate
+                    ((X509Certificate) cert).checkValidity();
+
+                    SigUtils.checkCertificateUsage((X509Certificate) cert);
+                }
             }
-            setCertificateChain(certChain);
-            cert = certChain[0];
-            if (cert instanceof X509Certificate)
-            {
-                // avoid expired certificate
-                ((X509Certificate) cert).checkValidity();
-            }
-            break;
         }
 
         if (cert == null)
@@ -108,20 +104,28 @@ public abstract class CreateSignatureBase implements SignatureInterface
         this.certificateChain = certificateChain;
     }
 
+    public Certificate[] getCertificateChain()
+    {
+        return certificateChain;
+    }
+
     public void setTsaUrl(String tsaUrl)
     {
         this.tsaUrl = tsaUrl;
     }
 
     /**
-     * SignatureInterface implementation.
-     *
+     * SignatureInterface sample implementation.
+     *<p>
      * This method will be called from inside of the pdfbox and create the PKCS #7 signature.
      * The given InputStream contains the bytes that are given by the byte range.
-     *
+     *<p>
      * This method is for internal use only.
-     *
+     *<p>
      * Use your favorite cryptographic library to implement PKCS #7 signature creation.
+     * If you want to create the hash and the signature separately (e.g. to transfer only the hash
+     * to an external application), read <a href="https://stackoverflow.com/questions/41767351">this
+     * answer</a> or <a href="https://stackoverflow.com/questions/56867465">this answer</a>.
      *
      * @throws IOException
      */
@@ -131,14 +135,11 @@ public abstract class CreateSignatureBase implements SignatureInterface
         // cannot be done private (interface)
         try
         {
-            List<Certificate> certList = new ArrayList<>();
-            certList.addAll(Arrays.asList(certificateChain));
-            Store certs = new JcaCertStore(certList);
             CMSSignedDataGenerator gen = new CMSSignedDataGenerator();
-            org.bouncycastle.asn1.x509.Certificate cert = org.bouncycastle.asn1.x509.Certificate.getInstance(certificateChain[0].getEncoded());
+            X509Certificate cert = (X509Certificate) certificateChain[0];
             ContentSigner sha1Signer = new JcaContentSignerBuilder("SHA256WithRSA").build(privateKey);
-            gen.addSignerInfoGenerator(new JcaSignerInfoGeneratorBuilder(new JcaDigestCalculatorProviderBuilder().build()).build(sha1Signer, new X509CertificateHolder(cert)));
-            gen.addCertificates(certs);
+            gen.addSignerInfoGenerator(new JcaSignerInfoGeneratorBuilder(new JcaDigestCalculatorProviderBuilder().build()).build(sha1Signer, cert));
+            gen.addCertificates(new JcaCertStore(Arrays.asList(certificateChain)));
             CMSProcessableInputStream msg = new CMSProcessableInputStream(content);
             CMSSignedData signedData = gen.generate(msg, false);
             if (tsaUrl != null && tsaUrl.length() > 0)

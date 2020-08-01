@@ -107,14 +107,14 @@ public class PDOptionalContentProperties implements COSObjectable
 
     /** {@inheritDoc} */
     @Override
-    public COSBase getCOSObject()
+    public COSDictionary getCOSObject()
     {
         return this.dict;
     }
 
     private COSArray getOCGs()
     {
-        COSArray ocgs = (COSArray)this.dict.getItem(COSName.OCGS);
+        COSArray ocgs = this.dict.getCOSArray(COSName.OCGS);
         if (ocgs == null)
         {
             ocgs = new COSArray();
@@ -143,7 +143,8 @@ public class PDOptionalContentProperties implements COSObjectable
     }
 
     /**
-     * Returns the optional content group of the given name.
+     * Returns the first optional content group of the given name.
+     *
      * @param name the group name
      * @return the optional content group or null, if there is no such group
      */
@@ -223,7 +224,11 @@ public class PDOptionalContentProperties implements COSObjectable
      */
     public String[] getGroupNames()
     {
-        COSArray ocgs = (COSArray)dict.getDictionaryObject(COSName.OCGS);
+        COSArray ocgs = dict.getCOSArray(COSName.OCGS);
+        if (ocgs == null)
+        {
+            return new String[0];
+        }
         int size = ocgs.size();
         String[] groups = new String[size];
         for (int i = 0; i < size; i++)
@@ -254,13 +259,27 @@ public class PDOptionalContentProperties implements COSObjectable
     }
 
     /**
-     * Indicates whether an optional content group is enabled.
+     * Indicates whether <em>at least one</em> optional content group with this name is enabled.
+     * There may be disabled optional content groups with this name even if this function returns
+     * true.
+     *
      * @param groupName the group name
-     * @return true if the group is enabled
+     * @return true if at least one group is enabled
      */
     public boolean isGroupEnabled(String groupName)
     {
-        return isGroupEnabled(getGroup(groupName));
+        boolean result = false;
+        COSArray ocgs = getOCGs();
+        for (COSBase o : ocgs)
+        {
+            COSDictionary ocg = toDictionary(o);
+            String name = ocg.getString(COSName.NAME);
+            if (groupName.equals(name) && isGroupEnabled(new PDOptionalContentGroup(ocg)))
+            {
+                result = true;
+            }
+        }
+        return result;
     }
 
     /**
@@ -325,14 +344,27 @@ public class PDOptionalContentProperties implements COSObjectable
     }
 
     /**
-     * Enables or disables an optional content group.
+     * Enables or disables all optional content groups with the given name.
+     *
      * @param groupName the group name
      * @param enable true to enable, false to disable
-     * @return true if the group already had an on or off setting, false otherwise
+     * @return true if at least one group with this name already had an on or off setting, false
+     * otherwise
      */
     public boolean setGroupEnabled(String groupName, boolean enable)
     {
-        return setGroupEnabled(getGroup(groupName), enable);
+        boolean result = false;
+        COSArray ocgs = getOCGs();
+        for (COSBase o : ocgs)
+        {
+            COSDictionary ocg = toDictionary(o);
+            String name = ocg.getString(COSName.NAME);
+            if (groupName.equals(name) && setGroupEnabled(new PDOptionalContentGroup(ocg), enable))
+            {
+                result = true;
+            }
+        }
+        return result;
     }
 
     /**

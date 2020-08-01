@@ -34,7 +34,6 @@ import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.util.BoundingBox;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
@@ -82,7 +81,7 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
             PDStream ff3Stream = fd.getFontFile3();
             if (ff3Stream != null)
             {
-                bytes = IOUtils.toByteArray(ff3Stream.createInputStream());
+                bytes = ff3Stream.toByteArray();
                 if (bytes.length == 0)
                 {
                     LOG.error("Invalid data for embedded Type1C font " + getName());
@@ -99,7 +98,7 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
             {
                 // note: this could be an OpenType file, fortunately CFFParser can handle that
                 CFFParser cffParser = new CFFParser();
-                cffEmbedded = (CFFType1Font)cffParser.parse(bytes, new ByteSource()).get(0);
+                cffEmbedded = (CFFType1Font)cffParser.parse(bytes, new FF3ByteSource()).get(0);
             }
         }
         catch (IOException e)
@@ -164,6 +163,7 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     public boolean hasGlyph(int code) throws IOException
     {
         String name = getEncoding().getName(code);
+        name = getNameInFont(name);
         return hasGlyph(name);
     }
 
@@ -171,6 +171,7 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     public GeneralPath getPath(int code) throws IOException
     {
         String name = getEncoding().getName(code);
+        name = getNameInFont(name);
         return getPath(name);
     }
 
@@ -178,6 +179,7 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     public GeneralPath getNormalizedPath(int code) throws IOException
     {
         String name = getEncoding().getName(code);
+        name = getNameInFont(name);
         GeneralPath path = getPath(name);
         if (path == null)
         {
@@ -297,6 +299,7 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     public float getWidthFromFont(int code) throws IOException
     {
         String name = codeToName(code);
+        name = getNameInFont(name);
         float width = genericFont.getWidth(name);
 
         Point2D p = new Point2D.Float(width, 0);
@@ -314,11 +317,15 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     public float getHeight(int code) throws IOException
     {
         String name = codeToName(code);
-        float height = 0;
+        float height;
         if (!glyphHeights.containsKey(name))
         {
             height = (float)cffFont.getType1CharString(name).getBounds().getHeight(); // todo: cffFont could be null
             glyphHeights.put(name, height);
+        }
+        else
+        {
+            height = glyphHeights.get(name);
         }
         return height;
     }
@@ -414,13 +421,12 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
         return ".notdef";
     }
     
-    private class ByteSource implements CFFParser.ByteSource
+    private class FF3ByteSource implements CFFParser.ByteSource
     {
         @Override
         public byte[] getBytes() throws IOException
         {
-            PDStream ff3Stream = getFontDescriptor().getFontFile3();
-            return IOUtils.toByteArray(ff3Stream.createInputStream());
+            return getFontDescriptor().getFontFile3().toByteArray();
         }
     }
 }

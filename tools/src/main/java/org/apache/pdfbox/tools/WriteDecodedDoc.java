@@ -19,7 +19,10 @@ package org.apache.pdfbox.tools;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
@@ -34,6 +37,7 @@ import org.apache.pdfbox.pdmodel.common.PDStream;
 public class WriteDecodedDoc
 {
 
+    @SuppressWarnings({"squid:S2068"})
     private static final String PASSWORD = "-password";
     private static final String SKIPIMAGES = "-skipImages";
 
@@ -58,46 +62,46 @@ public class WriteDecodedDoc
     public void doIt(String in, String out, String password, boolean skipImages)
             throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(in), password))
+        try (PDDocument doc = Loader.loadPDF(new File(in), password))
         {
             doc.setAllSecurityToBeRemoved(true);
-            for (COSObject cosObject : doc.getDocument().getObjects())
-            {
-                COSBase base = cosObject.getObject();
-                if (base instanceof COSStream)
-                {
-                    COSStream stream = (COSStream) base;
-                    if (skipImages &&
-                        COSName.XOBJECT.equals(stream.getItem(COSName.TYPE)) && 
-                        COSName.IMAGE.equals(stream.getItem(COSName.SUBTYPE)))
-                    {
-                        continue;
-                    }
-                    byte[] bytes;
-                    try
-                    {
-                        bytes = new PDStream(stream).toByteArray();
-                    }
-                    catch (IOException ex)
-                    {
-                        System.err.println("skip " + 
-                                cosObject.getObjectNumber() + " " + 
-                                cosObject.getGenerationNumber() + " obj: " + 
-                                ex.getMessage());
-                        continue;
-                    }
-                    stream.removeItem(COSName.FILTER);
-                    try (OutputStream streamOut = stream.createOutputStream())
-                    {
-                        streamOut.write(bytes);
-                    }
-                }
-            }
+            COSDocument cosDocument = doc.getDocument();
+            cosDocument.getXrefTable().keySet().stream()
+                    .forEach(o -> processObject(cosDocument.getObjectFromPool(o), skipImages));
             doc.getDocumentCatalog();
+            doc.getDocument().setIsXRefStream(false);
             doc.save( out );
         }
     }
 
+    private void processObject(COSObject cosObject, boolean skipImages)
+    {
+        COSBase base = cosObject.getObject();
+        if (base instanceof COSStream)
+        {
+            COSStream stream = (COSStream) base;
+            if (skipImages && COSName.XOBJECT.equals(stream.getItem(COSName.TYPE))
+                    && COSName.IMAGE.equals(stream.getItem(COSName.SUBTYPE)))
+            {
+                return;
+            }
+            try
+            {
+                byte[] bytes = new PDStream(stream).toByteArray();
+                stream.removeItem(COSName.FILTER);
+                try (OutputStream streamOut = stream.createOutputStream())
+                {
+                    streamOut.write(bytes);
+                }
+            }
+            catch (IOException ex)
+            {
+                System.err.println("skip " + cosObject.getObjectNumber() + " "
+                        + cosObject.getGenerationNumber() + " obj: " + ex.getMessage());
+            }
+        }
+
+    }
     /**
      * This will write a PDF document with completely decoded streams.
      * <br>
@@ -112,6 +116,7 @@ public class WriteDecodedDoc
         System.setProperty("apple.awt.UIElement", "true");
 
         WriteDecodedDoc app = new WriteDecodedDoc();
+        @SuppressWarnings({"squid:S2068"})
         String password = "";
         String pdfFile = null;
         String outputFile = null;

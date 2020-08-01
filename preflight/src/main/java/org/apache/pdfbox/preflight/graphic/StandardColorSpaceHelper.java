@@ -23,18 +23,25 @@ package org.apache.pdfbox.preflight.graphic;
 
 import java.awt.color.ICC_Profile;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
+import java.util.Objects;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSNumber;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceNAttributes;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceNProcess;
 import org.apache.pdfbox.pdmodel.graphics.color.PDICCBased;
 import org.apache.pdfbox.pdmodel.graphics.color.PDIndexed;
 import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
+import org.apache.pdfbox.preflight.PreflightConfiguration;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.PreflightPath;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
@@ -50,6 +57,8 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_INVAL
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_INVALID_COLOR_SPACE_TOO_MANY_COMPONENTS_DEVICEN;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_INVALID_PATTERN_COLOR_SPACE_FORBIDDEN;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_INVALID_UNKNOWN_COLOR_SPACE;
+import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_OUTPUT_INTENT_ICC_PROFILE_TOO_RECENT;
+import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_OUTPUT_INTENT_INVALID_ENTRY;
 import static org.apache.pdfbox.preflight.PreflightConstants.MAX_DEVICE_N_LIMIT;
 
 /**
@@ -80,7 +89,7 @@ public class StandardColorSpaceHelper implements ColorSpaceHelper
     /*
      * (non-Javadoc)
      * 
-     * @see net.awl.edoc.pdfa.validation.graphics.color.ColorSpaceHelper#validate(java .util.List)
+     * @see org.apache.pdfbox.preflight.graphic.color.ColorSpaceHelper#validate(java .util.List)
      */
     @Override
     public final void validate() throws ValidationException
@@ -213,7 +222,7 @@ public class StandardColorSpaceHelper implements ColorSpaceHelper
     }
 
     /**
-     * Method called by the processAllColorSpace if the ColorSpace to check is a Clibrated Color (CalGary, CalRGB, Lab).
+     * Method called by the processAllColorSpace if the ColorSpace to check is a calibrated color (CalGray, CalRGB, Lab).
      * @param colorSpace 
      * 
      */
@@ -235,7 +244,13 @@ public class StandardColorSpaceHelper implements ColorSpaceHelper
         PDICCBased iccBased = (PDICCBased) colorSpace;
         try
         {
-            ICC_Profile.getInstance(iccBased.getPDStream().createInputStream());
+            ICC_Profile iccp;
+            try (InputStream is = iccBased.getPDStream().createInputStream())
+            {
+                // check that ICC profile loads (PDICCBased also does this, but catches the exception)
+                // PDFBOX-2819: load ICC profile as a stream, not as a byte array because of java error
+                iccp = ICC_Profile.getInstance(is);
+            }
             PDColorSpace altpdcs = iccBased.getAlternateColorSpace();
             if (altpdcs != null)
             {
@@ -255,9 +270,20 @@ public class StandardColorSpaceHelper implements ColorSpaceHelper
                  * 
                  * We don't check the alternate ColorSpaces
                  */
+                // PDFBOX-4611, PDFBOX-4607: Yes we do because Adobe Reader chokes on it
+                // and because VeraPDF and PDF-Tools do it.
+                if (!validateICCProfileNEntry(iccBased.getPDStream().getCOSObject(), iccp))
+                {
+                    return;
+                }
+                if (!validateICCProfileVersion(iccp))
+                {
+                    return;
+                }
+                validateICCProfileAlternateEntry(iccBased);
             }
-        }        
-        catch (IllegalArgumentException e)
+        }
+        catch (IllegalArgumentException | ArrayIndexOutOfBoundsException e)
         {
             // this is not a ICC_Profile
             context.addValidationError(new ValidationError(ERROR_GRAPHIC_INVALID_COLOR_SPACE_ICCBASED,
@@ -302,16 +328,14 @@ public class StandardColorSpaceHelper implements ColorSpaceHelper
             if (attr != null)
             {
                 final Map<String, PDSeparation> colorants = attr.getColorants();
-                if (colorants != null)
+                numberOfColorants = colorants.size();
+                colorants.values().stream().
+                        filter(Objects::nonNull).
+                        forEachOrdered(this::processAllColorSpace);
+                PDDeviceNProcess process = attr.getProcess();
+                if (process != null)
                 {
-                    numberOfColorants = colorants.size();
-                    for (PDSeparation col : colorants.values())
-                    {
-                        if (col != null)
-                        {
-                            processAllColorSpace(col);
-                        }
-                    }
+                    processAllColorSpace(process.getColorSpace());
                 }
             }
             int numberOfComponents = deviceN.getNumberOfComponents();
@@ -441,14 +465,94 @@ public class StandardColorSpaceHelper implements ColorSpaceHelper
             if (defaultCS != null)
             {
                 // defaultCS is valid if the number of errors hasn't changed
-                int nbOfErrors = context.getDocument().getResult().getErrorsList().size();
+                int nbOfErrors = context.getDocument().getValidationErrors().size();
                 processAllColorSpace(defaultCS);
-                int newNbOfErrors = context.getDocument().getResult().getErrorsList().size();
+                int newNbOfErrors = context.getDocument().getValidationErrors().size();
                 result = (nbOfErrors == newNbOfErrors);
             }
 
         }
 
         return result;
+    }
+
+    private boolean validateICCProfileVersion(ICC_Profile iccp)
+    {
+        PreflightConfiguration config = context.getConfig();
+
+        // check the ICC Profile version (6.2.2)
+        if (iccp.getMajorVersion() == 2)
+        {
+            if (iccp.getMinorVersion() > 0x40)
+            {
+                // in PDF 1.4, max version is 02h.40h (meaning V 3.5)
+                // see the ICCProfile specification (ICC.1:1998-09)page 13 - §6.1.3 :
+                // The current profile version number is "2.4.0" (encoded as 02400000h")
+                ValidationError error = new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_ICC_PROFILE_TOO_RECENT,
+                        "Invalid version of the ICCProfile");
+                error.setWarning(config.isLazyValidation());
+                context.addValidationError(error);
+                return false;
+            }
+            // else OK
+        }
+        else if (iccp.getMajorVersion() > 2)
+        {
+            // in PDF 1.4, max version is 02h.40h (meaning V 3.5)
+            // see the ICCProfile specification (ICC.1:1998-09)page 13 - §6.1.3 :
+            // The current profile version number is "2.4.0" (encoded as 02400000h"
+            ValidationError error = new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_ICC_PROFILE_TOO_RECENT,
+                    "Invalid version of the ICCProfile");
+            error.setWarning(config.isLazyValidation());
+            context.addValidationError(error);
+            return false;
+        }
+        // else seems less than 2, so correct
+        return true;
+    }
+
+    private boolean validateICCProfileNEntry(COSStream stream, ICC_Profile iccp)
+    {
+        COSDictionary streamDict = (COSDictionary) stream.getCOSObject();
+        if (!streamDict.containsKey(COSName.N))
+        {
+            context.addValidationError(new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_INVALID_ENTRY,
+                    "/N entry of ICC profile is mandatory"));
+            return false;
+        }
+        COSBase nValue = streamDict.getItem(COSName.N);
+        if (!(nValue instanceof COSNumber))
+        {
+            context.addValidationError(new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_INVALID_ENTRY,
+                    "/N entry of ICC profile must be a number, but is " + nValue));
+            return false;
+        }
+        int nNumberValue = ((COSNumber) nValue).intValue();
+        if (nNumberValue != 1 && nNumberValue != 3 && nNumberValue != 4)
+        {
+            context.addValidationError(new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_INVALID_ENTRY,
+                    "/N entry of ICC profile must be 1, 3 or 4, but is " + nNumberValue));
+            return false;
+        }
+        if (iccp.getNumComponents() != nNumberValue)
+        {
+            context.addValidationError(new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_INVALID_ENTRY,
+                    "/N entry of ICC profile is " + nNumberValue + " but the ICC profile has " + iccp.getNumComponents() + " components"));
+            return false;
+        }
+        return true;
+    }
+
+    private void validateICCProfileAlternateEntry(PDICCBased iccBased) throws IOException
+    {
+        PDColorSpace altCS = iccBased.getAlternateColorSpace();
+        if (altCS != null && altCS.getNumberOfComponents() != iccBased.getNumberOfComponents())
+        {
+            // https://github.com/veraPDF/veraPDF-library/issues/773
+            context.addValidationError(new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_INVALID_ENTRY,
+                    "/N entry of ICC profile is different (" + iccBased.getNumberOfComponents()
+                    + ") than alternate entry colorspace component count ("
+                    + altCS.getNumberOfComponents() + ")"));
+        }
     }
 }

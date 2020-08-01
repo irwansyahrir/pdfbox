@@ -16,12 +16,13 @@
  */
 package org.apache.pdfbox.pdmodel.interactive.annotation;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
@@ -110,7 +111,7 @@ public class PDSquareAnnotationTest
         final int borderWidth = 1;
 
         File file = new File(IN_DIR, NAME_OF_PDF);
-        try (PDDocument document = PDDocument.load(file))
+        try (PDDocument document = Loader.loadPDF(file))
         {
             PDPage page = document.getPage(0);
             List<PDAnnotation> annotations = page.getAnnotations();
@@ -138,8 +139,7 @@ public class PDSquareAnnotationTest
             PDStream contentStream = appearanceStream.getContentStream();
             assertNotNull("Content stream shall not be null", contentStream);
             PDFStreamParser parser = new PDFStreamParser(appearanceStream.getContents());
-            parser.parse();
-            List<Object> tokens = parser.getTokens();
+            List<Object> tokens = parser.parse();
             
             // the samples content stream should contain 10 tokens
             assertEquals(10, tokens.size());

@@ -27,7 +27,8 @@ import java.util.Stack;
  * @author John Hewson
  * 
  */
-public abstract class CharStringHandler
+@FunctionalInterface
+public interface CharStringHandler
 {
     /**
      * Handler for a sequence of CharStringCommands.
@@ -35,22 +36,22 @@ public abstract class CharStringHandler
      * @param sequence of CharStringCommands
      *
      */
-    public List<Number> handleSequence(List<Object> sequence)
+    default List<Number> handleSequence(List<Object> sequence)
     {
         Stack<Number> stack = new Stack<>();
-        for (Object obj : sequence)
+        sequence.forEach(obj ->
         {
             if (obj instanceof CharStringCommand)
             {
-                List<Number> results = handleCommand(stack, (CharStringCommand)obj);
+                List<Number> results = handleCommand(stack, (CharStringCommand) obj);
                 stack.clear();  // this is basically returning the new stack
                 stack.addAll(results);
             }
             else
             {
-                stack.push((Number)obj);
+                stack.push((Number) obj);
             }
-        }
+        });
         return stack;
     }
 
@@ -61,5 +62,5 @@ public abstract class CharStringHandler
      * @param command the CharStringCommand
      * @return a list of commands. This can be empty but never be null.
      */
-    public abstract List<Number> handleCommand(List<Number> numbers, CharStringCommand command);
+    List<Number> handleCommand(List<Number> numbers, CharStringCommand command);
 }

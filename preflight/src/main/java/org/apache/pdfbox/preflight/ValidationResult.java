@@ -150,10 +150,7 @@ public class ValidationResult
     {
         if (errors != null)
         {
-            for (ValidationError validationError : errors)
-            {
-                addError(validationError);
-            }
+            errors.forEach(this::addError);
         }
     }
 
@@ -348,7 +345,7 @@ public class ValidationResult
             }
             else
             {
-                // default Unkown error
+                // default Unknown error
                 this.details = "Unknown error";
             }
             t = new Exception();
@@ -369,7 +366,7 @@ public class ValidationResult
             {
                 StringBuilder sb = new StringBuilder(this.details.length() + details.length() + 2);
                 sb.append(this.details).append(", ").append(details);
-                this.details = sb.toString();
+                this.details = sb.length() > 400 ? sb.substring(0, 400) : sb.toString();
             }
             this.cause = cause;
             t = new Exception();

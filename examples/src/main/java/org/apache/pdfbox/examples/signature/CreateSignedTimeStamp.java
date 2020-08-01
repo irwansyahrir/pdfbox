@@ -22,11 +22,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.security.GeneralSecurityException;
 import java.security.NoSuchAlgorithmException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
@@ -84,7 +84,7 @@ public class CreateSignedTimeStamp implements SignatureInterface
         }
 
         // sign
-        try (PDDocument doc = PDDocument.load(inFile);
+        try (PDDocument doc = Loader.loadPDF(inFile);
              FileOutputStream fos = new FileOutputStream(outFile))
         {
             signDetached(doc, fos);
@@ -141,7 +141,7 @@ public class CreateSignedTimeStamp implements SignatureInterface
         return new byte[] {};
     }
 
-    public static void main(String[] args) throws IOException, GeneralSecurityException
+    public static void main(String[] args) throws IOException
     {
         if (args.length != 3)
         {

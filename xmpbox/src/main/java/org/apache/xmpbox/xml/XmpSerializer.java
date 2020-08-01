@@ -23,7 +23,6 @@ package org.apache.xmpbox.xml;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
@@ -54,17 +53,34 @@ import org.w3c.dom.ProcessingInstruction;
 public class XmpSerializer
 {
 
-    private DocumentBuilder documentBuilder = null;
+    private final TransformerFactory transformerFactory;
+    private final DocumentBuilder documentBuilder;
 
     private boolean parseTypeResourceForLi = true;
 
+    /**
+     * Default constructor.
+     */
+    @SuppressWarnings({ "squid:S2755" }) // self-created XML
     public XmpSerializer()
     {
+        this(TransformerFactory.newInstance(), DocumentBuilderFactory.newInstance());
+    }
+
+    /**
+     * Constructor to be used if other factories than the default ones are needed.
+     * 
+     * @param transformerFactory     transformer factory to be used
+     * @param documentBuilderFactory document builder factory to be used
+     */
+    public XmpSerializer(TransformerFactory transformerFactory,
+            DocumentBuilderFactory documentBuilderFactory)
+    {
+        this.transformerFactory = transformerFactory;
         // xml init
-        DocumentBuilderFactory builderFactory = DocumentBuilderFactory.newInstance();
         try
         {
-            documentBuilder = builderFactory.newDocumentBuilder();
+            documentBuilder = documentBuilderFactory.newDocumentBuilder();
         }
         catch (ParserConfigurationException e)
         {
@@ -190,8 +206,8 @@ public class XmpSerializer
     {
         // normalize the attributes list
         List<Attribute> toSerialize = normalizeAttributes(property);        
-        
-        for (Attribute attribute : toSerialize)
+
+        toSerialize.forEach(attribute ->
         {
             if (XmpConstants.RDF_NAMESPACE.equals(attribute.getNamespace()))
             {
@@ -201,12 +217,10 @@ public class XmpSerializer
             {
                 target.setAttribute(attribute.getName(), attribute.getValue());
             }
-        }
-        
-        for (Map.Entry<String, String> ns : property.getAllNamespacesWithPrefix().entrySet())
-        {
-            target.setAttribute(XMLConstants.XMLNS_ATTRIBUTE + ":" + ns.getValue(), ns.getKey());
-        }
+        });
+
+        property.getAllNamespacesWithPrefix().forEach((key, value) ->
+                target.setAttribute(XMLConstants.XMLNS_ATTRIBUTE + ":" + value, key));
     }
 
     /** Normalize the list of attributes.
@@ -276,19 +290,15 @@ public class XmpSerializer
     /**
      * Save the XML document to an output stream.
      * 
-     * @param doc
-     *            The XML document to save.
-     * @param outStream
-     *            The stream to save the document to.
-     * @param encoding
-     *            The encoding to save the file as.
+     * @param doc       The XML document to save.
+     * @param outStream The stream to save the document to.
+     * @param encoding  The encoding to save the file as.
      * 
-     * @throws TransformerException
-     *             If there is an error while saving the XML.
+     * @throws TransformerException If there is an error while saving the XML.
      */
     private void save(Node doc, OutputStream outStream, String encoding) throws TransformerException
     {
-        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+        Transformer transformer = transformerFactory.newTransformer();
         // human readable
         transformer.setOutputProperty(OutputKeys.INDENT, "yes");
         // indent elements

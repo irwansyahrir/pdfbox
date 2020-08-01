@@ -23,17 +23,18 @@ package org.apache.pdfbox.preflight;
 
 import java.io.Closeable;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-
-import javax.activation.DataSource;
+import java.util.Set;
 
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdfparser.XrefTrailerResolver;
+import org.apache.pdfbox.pdmodel.common.COSObjectable;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
 import org.apache.pdfbox.preflight.font.container.FontContainer;
 import org.apache.pdfbox.preflight.graphic.ICCProfileWrapper;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 import org.apache.xmpbox.XMPMetadata;
 
 public class PreflightContext implements Closeable
@@ -47,11 +48,6 @@ public class PreflightContext implements Closeable
      * The PDFbox object representation of the PDF source.
      */
     private PreflightDocument document = null;
-
-    /**
-     * The datasource to load the document from. Needed by StreamValidationProcess.
-     */
-    private DataSource source = null;
 
     /**
      * Contains all Xref/trailer objects and resolves them into single object using startxref reference.
@@ -73,9 +69,11 @@ public class PreflightContext implements Closeable
      */
     private XMPMetadata metadata = null;
 
-    private PreflightConfiguration config = null;
+    private PreflightConfiguration config;
 
     private PreflightPath validationPath = new PreflightPath();
+
+    private final Set<COSObjectable> processedSet = new HashSet<>();
 
     private Integer currentPageNumber = null;
     
@@ -83,17 +81,14 @@ public class PreflightContext implements Closeable
 
     /**
      * Create the DocumentHandler using the DataSource which represent the PDF file to check.
-     * 
-     * @param source
      */
-    public PreflightContext(DataSource source)
+    public PreflightContext()
     {
-        this.source = source;
+        this.config = null;
     }
 
-    public PreflightContext(DataSource source, PreflightConfiguration configuration)
+    public PreflightContext(PreflightConfiguration configuration)
     {
-        this.source = source;
         this.config = configuration;
     }
 
@@ -140,20 +135,6 @@ public class PreflightContext implements Closeable
     public void setDocument(PreflightDocument document)
     {
         this.document = document;
-    }
-
-    /**
-     * 
-     * @return The datasource of the pdf document
-     */
-    public DataSource getSource()
-    {
-        return source;
-    }
-
-    public boolean isComplete()
-    {
-        return (document != null) && (source != null);
     }
 
     /**
@@ -212,7 +193,7 @@ public class PreflightContext implements Closeable
     @Override
     public void close()
     {
-        COSUtils.closeDocumentQuietly(document);
+        IOUtils.closeQuietly(document);
     }
 
     /**
@@ -234,11 +215,7 @@ public class PreflightContext implements Closeable
      */
     public void addValidationErrors(List<ValidationError> errors)
     {
-        PreflightDocument pfDoc = this.document;
-        for (ValidationError error : errors)
-        {
-            pfDoc.addValidationError(error);
-        }
+        errors.forEach(this.document::addValidationError);
     }
 
     public PreflightPath getValidationPath()
@@ -287,5 +264,26 @@ public class PreflightContext implements Closeable
     public long getFileLen()
     {
         return fileLen;
+    }
+
+    /**
+     * Add the argument to the set of processed elements,
+     *
+     * @param cos
+     */
+    public void addToProcessedSet(COSObjectable cos)
+    {
+        processedSet.add(cos);
+    }
+
+    /**
+     * Tell if the argument is in the set of processed elements.
+     *
+     * @param cos
+     * @return true if in the set, false if not.
+     */
+    public boolean isInProcessedSet(COSObjectable cos)
+    {
+        return processedSet.contains(cos);
     }
 }

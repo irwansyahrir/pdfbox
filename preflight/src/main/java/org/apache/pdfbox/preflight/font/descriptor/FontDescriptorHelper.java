@@ -25,17 +25,10 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_FONTS_DESCRIP
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_FONTS_FONT_FILEX_INVALID;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_METADATA_FORMAT;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_METADATA_FORMAT_STREAM;
-import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_METADATA_FORMAT_UNKOWN;
+import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_METADATA_FORMAT_UNKNOWN;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_METADATA_FORMAT_XPACKET;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_METADATA_UNKNOWN_VALUETYPE;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_INVALID_FILTER;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_ASCENT;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_CAPHEIGHT;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_DESCENT;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_FLAGS;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_FONTBBOX;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_ITALICANGLE;
-import static org.apache.pdfbox.preflight.PreflightConstants.FONT_DICTIONARY_KEY_STEMV;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,13 +70,13 @@ public abstract class FontDescriptorHelper<T extends FontContainer>
     static 
     {
         MANDATORYFIELDS = new HashSet<>();
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_FLAGS);
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_ITALICANGLE);
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_CAPHEIGHT);
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_FONTBBOX);
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_ASCENT);
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_DESCENT);
-        MANDATORYFIELDS.add(FONT_DICTIONARY_KEY_STEMV);
+        MANDATORYFIELDS.add(COSName.FLAGS.getName());
+        MANDATORYFIELDS.add(COSName.ITALIC_ANGLE.getName());
+        MANDATORYFIELDS.add(COSName.CAP_HEIGHT.getName());
+        MANDATORYFIELDS.add(COSName.FONT_BBOX.getName());
+        MANDATORYFIELDS.add(COSName.ASCENT.getName());
+        MANDATORYFIELDS.add(COSName.DESCENT.getName());
+        MANDATORYFIELDS.add(COSName.STEM_V.getName());
         MANDATORYFIELDS.add(COSName.FONT_NAME.getName());
         MANDATORYFIELDS.add(COSName.TYPE.getName());
     }
@@ -225,10 +218,10 @@ public abstract class FontDescriptorHelper<T extends FontContainer>
             if (metadata != null)
             {
                 // Filters are forbidden in a XMP stream
-                if (metadata.getFilters() != null && !metadata.getFilters().isEmpty())
+                if (!metadata.getFilters().isEmpty())
                 {
                     this.fContainer.push(new ValidationError(ERROR_SYNTAX_STREAM_INVALID_FILTER,
-                            this.font.getName() + ": Filter specified in font file metadata dictionnary"));
+                            this.font.getName() + ": Filter specified in font file metadata dictionary"));
                     return;
                 }
 
@@ -267,7 +260,7 @@ public abstract class FontDescriptorHelper<T extends FontContainer>
         }
         catch (IllegalStateException e)
         {
-            this.fContainer.push(new ValidationError(ERROR_METADATA_FORMAT_UNKOWN,
+            this.fContainer.push(new ValidationError(ERROR_METADATA_FORMAT_UNKNOWN,
                     this.font.getName() + ": The Metadata entry doesn't reference a stream object", e));
         }
     }

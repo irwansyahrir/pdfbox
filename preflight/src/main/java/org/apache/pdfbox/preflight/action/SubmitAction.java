@@ -49,12 +49,12 @@ public class SubmitAction extends AbstractActionManager
     /*
      * (non-Javadoc)
      * 
-     * @see net.awl.edoc.pdfa.validation.actions.AbstractActionManager#valid(java.util .List)
+     * @see org.apache.pdfbox.preflight.action.AbstractActionManager#valid(java.util .List)
      */
     @Override
     protected boolean innerValid()
     {
-        COSBase f = this.actionDictionnary.getItem(COSName.F);
+        COSBase f = this.actionDictionary.getItem(COSName.F);
         if (f == null)
         {
             context.addValidationError(new ValidationError(ERROR_ACTION_MISING_KEY,

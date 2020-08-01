@@ -20,7 +20,6 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.Toolkit;
-import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.util.Arrays;
@@ -39,6 +38,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextPane;
 import javax.swing.KeyStroke;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.WindowConstants;
 
 /**
  * A dialog to display a runtime exception stack trace.
@@ -50,7 +51,7 @@ import javax.swing.KeyStroke;
  * package</a>.
  *
  */
-@SuppressWarnings("serial")
+@SuppressWarnings({"serial","squid:MaximumInheritanceDepth"})
 public class ErrorDialog extends JDialog
 {
     private static final List<String> FILTERS = Arrays.asList(
@@ -110,7 +111,7 @@ public class ErrorDialog extends JDialog
         {
             setIconImage(((ImageIcon) icon).getImage());
         }
-        setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         error = t;
         message = createErrorMessage(error);
         main = createContent();
@@ -152,52 +153,44 @@ public class ErrorDialog extends JDialog
     final JComponent createContent()
     {
         final JButton showDetails = new JButton("Show Details >>");
-        showDetails.addActionListener(new ActionListener()
+        showDetails.addActionListener(e ->
         {
-            @Override
-            public void actionPerformed(ActionEvent e)
+            if (showingDetails)
             {
-                if (showingDetails)
-                {
-                    main.remove(details);
-                    main.validate();
-                    main.setPreferredSize(MESSAGE_SIZE);
-                }
-                else
-                {
-                    if (details == null)
-                    {
-                        details = createDetailedMessage(error);
-                        StringBuilder buffer = new StringBuilder();
-                        stacktrace.setText(generateStackTrace(error, buffer).toString());
-                        stacktrace.setCaretPosition(0);
-                        stacktrace.setBackground(main.getBackground());
-                        stacktrace.setPreferredSize(STACKTRACE_SIZE);
-                    }
-                    main.add(details, BorderLayout.CENTER);
-                    main.validate();
-                    main.setPreferredSize(TOTAL_SIZE);
-                }
-                showingDetails = !showingDetails;
-                showDetails.setText(showingDetails ? "<< Hide Details" : "Show Details >>");
-                ErrorDialog.this.pack();
+                main.remove(details);
+                main.validate();
+                main.setPreferredSize(MESSAGE_SIZE);
             }
+            else
+            {
+                if (details == null)
+                {
+                    details = createDetailedMessage();
+                    StringBuilder buffer = new StringBuilder();
+                    stacktrace.setText(generateStackTrace(error, buffer).toString());
+                    stacktrace.setCaretPosition(0);
+                    stacktrace.setBackground(main.getBackground());
+                    stacktrace.setPreferredSize(STACKTRACE_SIZE);
+                }
+                main.add(details, BorderLayout.CENTER);
+                main.validate();
+                main.setPreferredSize(TOTAL_SIZE);
+            }
+            showingDetails = !showingDetails;
+            showDetails.setText(showingDetails ? "<< Hide Details" : "Show Details >>");
+            ErrorDialog.this.pack();
         });
         JPanel messagePanel = new JPanel();
 
         final JCheckBox filter = new JCheckBox("Filter stack traces");
         filter.setSelected(isFiltering);
-        filter.addActionListener(new ActionListener()
+        filter.addActionListener(e ->
         {
-            @Override
-            public void actionPerformed(ActionEvent e)
-            {
-                isFiltering = filter.isSelected();
-                StringBuilder buffer = new StringBuilder();
-                stacktrace.setText(generateStackTrace(error, buffer).toString());
-                stacktrace.setCaretPosition(0);
-                stacktrace.repaint();
-            }
+            isFiltering = filter.isSelected();
+            StringBuilder buffer = new StringBuilder();
+            stacktrace.setText(generateStackTrace(error, buffer).toString());
+            stacktrace.setCaretPosition(0);
+            stacktrace.repaint();
         });
         message.setBackground(messagePanel.getBackground());
         JPanel buttonPanel = new JPanel();
@@ -216,14 +209,7 @@ public class ErrorDialog extends JDialog
         panel.add(messagePanel, BorderLayout.NORTH);
         
         // allow closing with ESC
-        ActionListener actionListener = new ActionListener()
-        {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent)
-            {
-                dispose();
-            }
-        };
+        ActionListener actionListener = actionEvent -> dispose();
         KeyStroke stroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
         panel.registerKeyboardAction(actionListener, stroke, JComponent.WHEN_IN_FOCUSED_WINDOW);        
         
@@ -247,14 +233,13 @@ public class ErrorDialog extends JDialog
     /**
      * Creates a non-editable widget to display the detailed stack trace.
      */
-    JScrollPane createDetailedMessage(Throwable t)
+    JScrollPane createDetailedMessage()
     {
         stacktrace = new JTextPane();
         stacktrace.setEditable(false);
-        JScrollPane pane = new JScrollPane(stacktrace,
-                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        return pane;
+        return new JScrollPane(stacktrace,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
     }
 
     /**
@@ -292,13 +277,6 @@ public class ErrorDialog extends JDialog
      */
     private boolean isSuppressed(String className)
     {
-        for (String s : FILTERS)
-        {
-            if (className.startsWith(s))
-            {
-                return true;
-            }
-        }
-        return false;
+        return FILTERS.stream().anyMatch(className::startsWith);
     }
 }

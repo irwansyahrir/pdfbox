@@ -17,10 +17,15 @@
 package org.apache.pdfbox.rendering;
 
 import java.awt.Color;
+import java.awt.DisplayMode;
 import java.awt.Graphics2D;
+import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsDevice;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.StringTokenizer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.cos.COSName;
@@ -29,9 +34,10 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.pdmodel.interactive.annotation.AnnotationFilter;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 
 /**
  * Renders a PDF document to an AWT BufferedImage.
@@ -49,16 +55,13 @@ public class PDFRenderer
     /**
     * Default annotations filter, returns all annotations
     */
-    private AnnotationFilter annotationFilter = new AnnotationFilter()
-    {
-        @Override
-        public boolean accept(PDAnnotation annotation)
-        {
-            return true;
-        }
-    };
+    private AnnotationFilter annotationFilter = annotation -> true;
 
     private boolean subsamplingAllowed = false;
+
+    private RenderDestination defaultDestination;
+
+    private RenderingHints renderingHints = null;
 
     private BufferedImage pageImage;
 
@@ -78,7 +81,7 @@ public class PDFRenderer
             kcmsLogged = true;
         }
     }
-    
+
     /**
      * Return the AnnotationFilter.
      * 
@@ -127,6 +130,44 @@ public class PDFRenderer
     public void setSubsamplingAllowed(boolean subsamplingAllowed)
     {
         this.subsamplingAllowed = subsamplingAllowed;
+    }
+
+    /**
+     * @return the defaultDestination
+     */
+    public RenderDestination getDefaultDestination()
+    {
+        return defaultDestination;
+    }
+
+    /**
+     * @param defaultDestination the defaultDestination to set
+     */
+    public void setDefaultDestination(RenderDestination defaultDestination)
+    {
+        this.defaultDestination = defaultDestination;
+    }
+
+    /**
+     * Get the rendering hints.
+     *
+     * @return the rendering hints or null if none are set.
+     */
+    public RenderingHints getRenderingHints()
+    {
+        return renderingHints;
+    }
+
+    /**
+     * Set the rendering hints. Use this to influence rendering quality and speed. If you don't set
+     * them yourself or pass null, PDFBox will decide <b><u>at runtime</u></b> depending on the
+     * destination.
+     *
+     * @param renderingHints
+     */
+    public void setRenderingHints(RenderingHints renderingHints)
+    {
+        this.renderingHints = renderingHints;
     }
 
     /**
@@ -190,13 +231,39 @@ public class PDFRenderer
     public BufferedImage renderImage(int pageIndex, float scale, ImageType imageType)
             throws IOException
     {
+        return renderImage(pageIndex, scale, imageType, 
+                           defaultDestination == null ? RenderDestination.EXPORT : defaultDestination);
+    }
+
+    /**
+     * Returns the given page as an RGB or ARGB image at the given scale.
+     * @param pageIndex the zero-based index of the page to be converted
+     * @param scale the scaling factor, where 1 = 72 DPI
+     * @param imageType the type of image to return
+     * @param destination controlling visibility of optional content groups
+     * @return the rendered page image
+     * @throws IOException if the PDF cannot be read
+     */
+    public BufferedImage renderImage(int pageIndex, float scale, ImageType imageType, RenderDestination destination)
+            throws IOException
+    {
         PDPage page = document.getPage(pageIndex);
 
         PDRectangle cropbBox = page.getCropBox();
         float widthPt = cropbBox.getWidth();
         float heightPt = cropbBox.getHeight();
-        int widthPx = Math.round(widthPt * scale);
-        int heightPx = Math.round(heightPt * scale);
+
+        // PDFBOX-4306 avoid single blank pixel line on the right or on the bottom
+        int widthPx = (int) Math.max(Math.floor(widthPt * scale), 1);
+        int heightPx = (int) Math.max(Math.floor(heightPt * scale), 1);
+
+        // PDFBOX-4518 the maximum size (w*h) of a buffered image is limited to Integer.MAX_VALUE
+        if ((long) widthPx * (long) heightPx > Integer.MAX_VALUE)
+        {
+            throw new IOException("Maximum size of image exceeded (w * h * scale) = "//
+                    + widthPt + " * " + heightPt + " * " + scale + " > " + Integer.MAX_VALUE);
+        }
+
         int rotationAngle = page.getRotation();
 
         int bimType = imageType.toBufferedImageType();
@@ -237,7 +304,10 @@ public class PDFRenderer
         transform(g, page, scale, scale);
 
         // the end-user may provide a custom PageDrawer
-        PageDrawerParameters parameters = new PageDrawerParameters(this, page, subsamplingAllowed);
+        RenderingHints actualRenderingHints =
+                renderingHints == null ? createDefaultRenderingHints(g) : renderingHints;
+        PageDrawerParameters parameters = new PageDrawerParameters(this, page, subsamplingAllowed,
+                                                                   destination, actualRenderingHints);
         PageDrawer drawer = createPageDrawer(parameters);
         drawer.drawPage(g, page.getCropBox());       
         
@@ -260,7 +330,11 @@ public class PDFRenderer
     }
 
     /**
-     * Renders a given page to an AWT Graphics2D instance.
+     * Renders a given page to an AWT Graphics2D instance at 72 DPI.
+     * <p>
+     * Read {@link #renderPageToGraphics(int, java.awt.Graphics2D, float, float, org.apache.pdfbox.rendering.RenderDestination) renderPageToGraphics(int, Graphics2D, float, float, RenderDestination)}
+     * before using this.
+     *
      * @param pageIndex the zero-based index of the page to be converted
      * @param graphics the Graphics2D on which to draw the page
      * @throws IOException if the PDF cannot be read
@@ -272,9 +346,13 @@ public class PDFRenderer
 
     /**
      * Renders a given page to an AWT Graphics2D instance.
+     * <p>
+     * Read {@link #renderPageToGraphics(int, java.awt.Graphics2D, float, float, org.apache.pdfbox.rendering.RenderDestination) renderPageToGraphics(int, Graphics2D, float, float, RenderDestination)}
+     * before using this.
+     *
      * @param pageIndex the zero-based index of the page to be converted
      * @param graphics the Graphics2D on which to draw the page
-     * @param scale the scale to draw the page at
+     * @param scale the scaling factor, where 1 = 72 DPI
      * @throws IOException if the PDF cannot be read
      */
     public void renderPageToGraphics(int pageIndex, Graphics2D graphics, float scale)
@@ -285,18 +363,50 @@ public class PDFRenderer
 
     /**
      * Renders a given page to an AWT Graphics2D instance.
-     * 
+     * <p>
+     * Read {@link #renderPageToGraphics(int, java.awt.Graphics2D, float, float, org.apache.pdfbox.rendering.RenderDestination) renderPageToGraphics(int, Graphics2D, float, float, RenderDestination)}
+     * before using this.
+     *
      * @param pageIndex the zero-based index of the page to be converted
      * @param graphics the Graphics2D on which to draw the page
-     * @param scaleX the scale to draw the page at for the x-axis
-     * @param scaleY the scale to draw the page at for the y-axis
+     * @param scaleX the scale to draw the page at for the x-axis, where 1 = 72 DPI
+     * @param scaleY the scale to draw the page at for the y-axis, where 1 = 72 DPI
      * @throws IOException if the PDF cannot be read
      */
     public void renderPageToGraphics(int pageIndex, Graphics2D graphics, float scaleX, float scaleY)
             throws IOException
     {
+        renderPageToGraphics(pageIndex, graphics, scaleX, scaleY, 
+                             defaultDestination == null ? RenderDestination.VIEW : defaultDestination);
+    }
+
+    /**
+     * Renders a given page to an AWT Graphics2D instance.
+     * <p>
+     * Known problems:
+     * <ul>
+     * <li>rendering of PDF files with transparencies is not supported on Ubuntu, see
+     * <a href="https://issues.apache.org/jira/browse/PDFBOX-4581">PDFBOX-4581</a> and
+     * <a href="https://bugs.openjdk.java.net/browse/JDK-6689349">JDK-6689349</a>. Rendering will
+     * not abort, but the pages will be rendered incorrectly.</li>
+     * <li>Clipping the Graphics2D will not work properly, see
+     * <a href="https://issues.apache.org/jira/browse/PDFBOX-4583">PDFBOX-4583</a>.</li>
+     * </ul>
+     * If you encounter these problems, then you should render into an image by using the
+     * {@link #renderImage(int) renderImage} methods.
+     * 
+     * @param pageIndex the zero-based index of the page to be converted
+     * @param graphics the Graphics2D on which to draw the page
+     * @param scaleX the scale to draw the page at for the x-axis, where 1 = 72 DPI
+     * @param scaleY the scale to draw the page at for the y-axis, where 1 = 72 DPI
+     * @param destination controlling visibility of optional content groups
+     * @throws IOException if the PDF cannot be read
+     */
+    public void renderPageToGraphics(int pageIndex, Graphics2D graphics, float scaleX, float scaleY, RenderDestination destination)
+            throws IOException
+    {
         PDPage page = document.getPage(pageIndex);
-        // TODO need width/wight calculations? should these be in PageDrawer?
+        // TODO need width/height calculations? should these be in PageDrawer?
 
         transform(graphics, page, scaleX, scaleY);
 
@@ -304,9 +414,23 @@ public class PDFRenderer
         graphics.clearRect(0, 0, (int) cropBox.getWidth(), (int) cropBox.getHeight());
 
         // the end-user may provide a custom PageDrawer
-        PageDrawerParameters parameters = new PageDrawerParameters(this, page, subsamplingAllowed);
+        RenderingHints actualRenderingHints =
+                renderingHints == null ? createDefaultRenderingHints(graphics) : renderingHints;
+        PageDrawerParameters parameters = new PageDrawerParameters(this, page, subsamplingAllowed,
+                                                                   destination, actualRenderingHints);
         PageDrawer drawer = createPageDrawer(parameters);
         drawer.drawPage(graphics, cropBox);
+    }
+
+    /**
+     * Indicates whether an optional content group is enabled.
+     * @param group the group
+     * @return true if the group is enabled
+     */
+    public boolean isGroupEnabled(PDOptionalContentGroup group)
+    {
+        PDOptionalContentProperties ocProperties = document.getDocumentCatalog().getOCProperties();
+        return ocProperties == null || ocProperties.isGroupEnabled(group);
     }
 
     // scale rotate translate
@@ -338,8 +462,41 @@ public class PDFRenderer
                     break;
             }
             graphics.translate(translateX, translateY);
-            graphics.rotate((float) Math.toRadians(rotationAngle));
+            graphics.rotate(Math.toRadians(rotationAngle));
         }
+    }
+
+    private boolean isBitonal(Graphics2D graphics)
+    {
+        GraphicsConfiguration deviceConfiguration = graphics.getDeviceConfiguration();
+        if (deviceConfiguration == null)
+        {
+            return false;
+        }
+        GraphicsDevice device = deviceConfiguration.getDevice();
+        if (device == null)
+        {
+            return false;
+        }
+        DisplayMode displayMode = device.getDisplayMode();
+        if (displayMode == null)
+        {
+            return false;
+        }
+        return displayMode.getBitDepth() == 1;
+    }
+
+    private RenderingHints createDefaultRenderingHints(Graphics2D graphics)
+    {
+        RenderingHints r = new RenderingHints(null);
+        r.put(RenderingHints.KEY_INTERPOLATION, isBitonal(graphics) ?
+                RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR :
+                RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        r.put(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        r.put(RenderingHints.KEY_ANTIALIASING, isBitonal(graphics) ?
+                                        RenderingHints.VALUE_ANTIALIAS_OFF :
+                                        RenderingHints.VALUE_ANTIALIAS_ON);
+        return r;
     }
 
     /**
@@ -391,44 +548,53 @@ public class PDFRenderer
     private static void suggestKCMS()
     {
         String cmmProperty = System.getProperty("sun.java2d.cmm");
-        if (isMinJdk8() && !"sun.java2d.cmm.kcms.KcmsServiceProvider".equals(cmmProperty))
+        if (!"sun.java2d.cmm.kcms.KcmsServiceProvider".equals(cmmProperty))
         {
             try
             {
                 // Make sure that class exists
                 Class.forName("sun.java2d.cmm.kcms.KcmsServiceProvider");
 
-                LOG.info("To get higher rendering speed on java 8 or 9,");
+                String version = System.getProperty("java.version");
+                if (version == null ||
+                    isGoodVersion(version, "1.8.0_(\\d+)", 191) ||
+                    isGoodVersion(version, "9.0.(\\d+)", 4))
+                {
+                    return;
+                }
+                LOG.info("Your current java version is: " + version);
+                LOG.info("To get higher rendering speed on old java 1.8 or 9 versions,");
+                LOG.info("  update to the latest 1.8 or 9 version (>= 1.8.0_191 or >= 9.0.4),");
+                LOG.info("  or");
                 LOG.info("  use the option -Dsun.java2d.cmm=sun.java2d.cmm.kcms.KcmsServiceProvider");
                 LOG.info("  or call System.setProperty(\"sun.java2d.cmm\", \"sun.java2d.cmm.kcms.KcmsServiceProvider\")");
             }
             catch (ClassNotFoundException e)
             {
-                // jdk 10 and higher
-                LOG.debug("KCMS doesn't exist anymore. SO SAD!");
+                // KCMS not available
             }
         }
     }
 
-    private static boolean isMinJdk8()
+    private static boolean isGoodVersion(String version, String regex, int min)
     {
-        // strategy from lucene-solr/lucene/core/src/java/org/apache/lucene/util/Constants.java
-        String version = System.getProperty("java.specification.version");
-        final StringTokenizer st = new StringTokenizer(version, ".");
-        try
+        Matcher matcher = Pattern.compile(regex).matcher(version);
+        if (matcher.matches() && matcher.groupCount() >= 1)
         {
-            int major = Integer.parseInt(st.nextToken());
-            int minor = 0;
-            if (st.hasMoreTokens())
+            try
             {
-                minor = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(matcher.group(1));
+                if (v >= min)
+                {
+                    // LCMS no longer bad
+                    return true;
+                }
             }
-            return major > 1 || (major == 1 && minor >= 8);
+            catch (NumberFormatException ex)
+            {
+                return true;
+            }
         }
-        catch (NumberFormatException nfe)
-        {
-            // maybe some new numbering scheme in the 22nd century
-            return true;
-        }
+        return false;
     }
 }

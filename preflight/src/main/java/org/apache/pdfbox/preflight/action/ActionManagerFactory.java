@@ -28,36 +28,31 @@ import java.util.Map;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSObjectKey;
+import org.apache.pdfbox.pdmodel.interactive.action.PDAction;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionHide;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionImportData;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionJavaScript;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionLaunch;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionMovie;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionNamed;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionRemoteGoTo;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionResetForm;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionSound;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionSubmitForm;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionThread;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.preflight.PreflightConstants;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
 import org.apache.pdfbox.preflight.exception.ValidationException;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 
 
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_KEY_NEXT;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_GOTO;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_GOTOR;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_HIDE;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_IMPORT;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_JAVASCRIPT;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_LAUNCH;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_MOVIE;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_NAMED;
 import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_NOOP;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_RESET;
 import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_SETSTATE;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_SOUND;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_SUBMIT;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_THREAD;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_ATYPE_URI;
-import static org.apache.pdfbox.preflight.PreflightConstants.ACTION_DICTIONARY_VALUE_TYPE;
-import static org.apache.pdfbox.preflight.PreflightConstants.DICTIONARY_KEY_ADDITIONAL_ACTION;
-import static org.apache.pdfbox.preflight.PreflightConstants.DICTIONARY_KEY_OPEN_ACTION;
 
 public class ActionManagerFactory
 {
@@ -88,25 +83,20 @@ public class ActionManagerFactory
             callCreateAction(aDict, ctx, result, alreadyCreated);
         }
 
-        COSDocument cosDocument = ctx.getDocument().getDocument();
-        COSBase oaDict = dictionary.getDictionaryObject(DICTIONARY_KEY_OPEN_ACTION);
-        if (oaDict != null && !COSUtils.isArray(oaDict, cosDocument))
+        COSBase oaDict = dictionary.getDictionaryObject(COSName.OPEN_ACTION);
+        if (oaDict != null && !(oaDict instanceof COSArray))
         {
             callCreateAction(oaDict, ctx, result, alreadyCreated);
         }
         // else nothing to do because an array contains a Destination and not an Action.
 
-        COSBase aa = dictionary.getDictionaryObject(DICTIONARY_KEY_ADDITIONAL_ACTION);
-        if (aa != null)
+        COSDictionary aaDict = dictionary.getCOSDictionary(COSName.AA);
+        if (aaDict != null)
         {
-            COSDictionary aaDict = COSUtils.getAsDictionary(aa, cosDocument);
-            if (aaDict != null)
+            for (COSName name : aaDict.keySet())
             {
-                for (Object key : aaDict.keySet())
-                {
-                    COSName name = (COSName) key;
-                    callCreateAction(aaDict.getItem(name), ctx, result, name.getName(), alreadyCreated);
-                }
+                callCreateAction(aaDict.getDictionaryObject(name), ctx, result, name.getName(),
+                        alreadyCreated);
             }
         }
         return result;
@@ -155,21 +145,23 @@ public class ActionManagerFactory
     private void callCreateAction(COSBase aDict, PreflightContext ctx, List<AbstractActionManager> result,
             String additionActionKey, Map<COSObjectKey, Boolean> alreadyCreated) throws ValidationException
     {
-        COSDocument cosDocument = ctx.getDocument().getDocument();
-        if (COSUtils.isDictionary(aDict, cosDocument))
+        if (aDict instanceof COSDictionary || aDict instanceof COSObject
+                && ((COSObject) aDict).getObject() instanceof COSDictionary)
         {
             if (aDict instanceof COSObject)
             {
                 COSObjectKey cok = new COSObjectKey((COSObject) aDict);
+                COSDictionary indirectDict = (COSDictionary) ((COSObject) aDict).getObject();
                 if (!alreadyCreated.containsKey(cok))
                 {
-                    result.add(createActionManager(ctx, COSUtils.getAsDictionary(aDict, cosDocument), additionActionKey));
+                    result.add(createActionManager(ctx, indirectDict, additionActionKey));
                     alreadyCreated.put(cok, true);
                 }
             }
             else
             {
-                result.add(createActionManager(ctx, COSUtils.getAsDictionary(aDict, cosDocument), additionActionKey));
+                result.add(createActionManager(ctx, (COSDictionary) aDict,
+                        additionActionKey));
             }
         }
         else
@@ -193,17 +185,16 @@ public class ActionManagerFactory
         List<AbstractActionManager> result = new ArrayList<>(0);
         Map<COSObjectKey, Boolean> alreadyCreated = new HashMap<>();
 
-        COSBase nextDict = actionDictionary.getDictionaryObject(ACTION_DICTIONARY_KEY_NEXT);
+        COSBase nextDict = actionDictionary.getDictionaryObject(COSName.NEXT);
         if (nextDict != null)
         {
-            COSDocument cosDocument = ctx.getDocument().getDocument();
-            if (COSUtils.isArray(nextDict, cosDocument))
+            if (nextDict instanceof COSArray)
             {
-                COSArray array = COSUtils.getAsArray(nextDict, cosDocument);
+                COSArray array = (COSArray) nextDict;
                 // ---- Next may contains an array of Action dictionary
                 for (int i = 0; i < array.size(); ++i)
                 {
-                    callCreateAction(array.get(i), ctx, result, alreadyCreated);
+                    callCreateAction(array.getObject(i), ctx, result, alreadyCreated);
                 }
             }
             else
@@ -234,7 +225,7 @@ public class ActionManagerFactory
     {
 
         String type = action.getNameAsString(COSName.TYPE);
-        if (type != null && !ACTION_DICTIONARY_VALUE_TYPE.equals(type))
+        if (type != null && !PDAction.TYPE.equals(type))
         {
             throw new ValidationException("The given dictionary isn't the dictionary of an Action");
         }
@@ -244,46 +235,48 @@ public class ActionManagerFactory
         String s = action.getNameAsString(COSName.S);
 
         // --- Here is authorized actions
-        if (ACTION_DICTIONARY_VALUE_ATYPE_GOTO.equals(s))
+        if (PDActionGoTo.SUB_TYPE.equals(s))
         {
             return new GoToAction(this, action, ctx, aaKey);
         }
 
-        if (ACTION_DICTIONARY_VALUE_ATYPE_GOTOR.equals(s))
+        if (PDActionRemoteGoTo.SUB_TYPE.equals(s))
         {
             return new GoToRemoteAction(this, action, ctx, aaKey);
         }
 
-        if (ACTION_DICTIONARY_VALUE_ATYPE_THREAD.equals(s))
+        if (PDActionThread.SUB_TYPE.equals(s))
         {
             return new ThreadAction(this, action, ctx, aaKey);
         }
 
-        if (ACTION_DICTIONARY_VALUE_ATYPE_URI.equals(s))
+        if (PDActionURI.SUB_TYPE.equals(s))
         {
             return new UriAction(this, action, ctx, aaKey);
         }
 
-        if (ACTION_DICTIONARY_VALUE_ATYPE_HIDE.equals(s))
+        if (PDActionHide.SUB_TYPE.equals(s))
         {
             return new HideAction(this, action, ctx, aaKey);
         }
 
-        if (ACTION_DICTIONARY_VALUE_ATYPE_NAMED.equals(s))
+        if (PDActionNamed.SUB_TYPE.equals(s))
         {
             return new NamedAction(this, action, ctx, aaKey);
         }
 
-        if (ACTION_DICTIONARY_VALUE_ATYPE_SUBMIT.equals(s))
+        if (PDActionSubmitForm.SUB_TYPE.equals(s))
         {
             return new SubmitAction(this, action, ctx, aaKey);
         }
 
         // --- Here is forbidden actions
-        if (ACTION_DICTIONARY_VALUE_ATYPE_LAUNCH.equals(s) || ACTION_DICTIONARY_VALUE_ATYPE_SOUND.equals(s)
-                || ACTION_DICTIONARY_VALUE_ATYPE_MOVIE.equals(s) || ACTION_DICTIONARY_VALUE_ATYPE_RESET.equals(s)
-                || ACTION_DICTIONARY_VALUE_ATYPE_IMPORT.equals(s) || ACTION_DICTIONARY_VALUE_ATYPE_JAVASCRIPT.equals(s)
-                || ACTION_DICTIONARY_VALUE_ATYPE_SETSTATE.equals(s) || ACTION_DICTIONARY_VALUE_ATYPE_NOOP.equals(s))
+        if (PDActionLaunch.SUB_TYPE.equals(s) || PDActionSound.SUB_TYPE.equals(s)
+                || PDActionMovie.SUB_TYPE.equals(s) || PDActionResetForm.SUB_TYPE.equals(s)
+                || PDActionImportData.SUB_TYPE.equals(s)
+                || PDActionJavaScript.SUB_TYPE.equals(s)
+                || ACTION_DICTIONARY_VALUE_ATYPE_SETSTATE.equals(s)
+                || ACTION_DICTIONARY_VALUE_ATYPE_NOOP.equals(s))
         {
             return new InvalidAction(this, action, ctx, aaKey, s);
         }

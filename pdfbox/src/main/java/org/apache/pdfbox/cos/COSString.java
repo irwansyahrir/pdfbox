@@ -18,11 +18,11 @@ package org.apache.pdfbox.cos;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.pdfbox.util.Charsets;
 import org.apache.pdfbox.util.Hex;
 
 /**
@@ -47,9 +47,57 @@ public final class COSString extends COSBase
 {
     private static final Log LOG = LogFactory.getLog(COSString.class);
 
+    private byte[] bytes;
+    private boolean forceHexForm;
+
     // legacy behaviour for old PDFParser
     public static final boolean FORCE_PARSING =
             Boolean.getBoolean("org.apache.pdfbox.forceParsing");
+
+    /**
+     * Creates a new PDF string from a byte array. This method can be used to read a string from
+     * an existing PDF file, or to create a new byte string.
+     *
+     * @param bytes The raw bytes of the PDF text string or byte string.
+     */
+    public COSString(byte[] bytes)
+    {
+        setValue(bytes);
+    }
+
+    /**
+     * Creates a new <i>text string</i> from a Java String.
+     *
+     * @param text The string value of the object.
+     */
+    public COSString(String text)
+    {
+        // check whether the string uses only characters available in PDFDocEncoding
+        boolean isOnlyPDFDocEncoding = true;
+        for (char c : text.toCharArray())
+        {
+            if (!PDFDocEncoding.containsChar(c))
+            {
+                isOnlyPDFDocEncoding = false;
+                break;
+            }
+        }
+
+        if (isOnlyPDFDocEncoding)
+        {
+            // PDFDocEncoded string
+            bytes = PDFDocEncoding.getBytes(text);
+        }
+        else
+        {
+            // UTF-16BE encoded string with a leading byte order marker
+            byte[] data = text.getBytes(StandardCharsets.UTF_16BE);
+            bytes = new byte[data.length + 2];
+            bytes[0] = (byte) 0xFE;
+            bytes[1] = (byte) 0xFF;
+            System.arraycopy(data, 0, bytes, 2, data.length);
+        }
+    }
 
     /**
      * This will create a COS string from a string of hex characters.
@@ -93,63 +141,6 @@ public final class COSString extends COSBase
         return new COSString(bytes.toByteArray());
     }
 
-    private byte[] bytes;
-    private boolean forceHexForm;
-
-    /**
-     * Creates a new PDF string from a byte array. This method can be used to read a string from
-     * an existing PDF file, or to create a new byte string.
-     *
-     * @param bytes The raw bytes of the PDF text string or byte string.
-     */
-    public COSString(byte[] bytes)
-    {
-        setValue(bytes);
-    }
-
-    /**
-     * Creates a new <i>text string</i> from a Java String.
-     *
-     * @param text The string value of the object.
-     */
-    public COSString(String text)
-    {
-        // check whether the string uses only characters available in PDFDocEncoding
-        boolean isOnlyPDFDocEncoding = true;
-        for (char c : text.toCharArray())
-        {
-            if (!PDFDocEncoding.containsChar(c))
-            {
-                isOnlyPDFDocEncoding = false;
-                break;
-            }
-        }
-
-        if (isOnlyPDFDocEncoding)
-        {
-            // PDFDocEncoded string
-            bytes = PDFDocEncoding.getBytes(text);
-        }
-        else
-        {
-            // UTF-16BE encoded string with a leading byte order marker
-            byte[] data = text.getBytes(Charsets.UTF_16BE);
-            ByteArrayOutputStream out = new ByteArrayOutputStream(data.length + 2);
-            out.write(0xFE); // BOM
-            out.write(0xFF); // BOM
-            try
-            {
-                out.write(data);
-            }
-            catch (IOException e)
-            {
-                // should never happen
-                throw new RuntimeException(e);
-            }
-            bytes = out.toByteArray();
-        }
-    }
-
     /**
      * Sets the raw value of this string.
      *
@@ -190,12 +181,12 @@ public final class COSString extends COSBase
             if ((bytes[0] & 0xff) == 0xFE && (bytes[1] & 0xff) == 0xFF)
             {
                 // UTF-16BE
-                return new String(bytes, 2, bytes.length - 2, Charsets.UTF_16BE);
+                return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16BE);
             }
             else if ((bytes[0] & 0xff) == 0xFF && (bytes[1] & 0xff) == 0xFE)
             {
                 // UTF-16LE - not in the PDF spec!
-                return new String(bytes, 2, bytes.length - 2, Charsets.UTF_16LE);
+                return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16LE);
             }
         }
 
@@ -209,7 +200,7 @@ public final class COSString extends COSBase
     public String getASCII()
     {
         // ASCII string
-        return new String(bytes, Charsets.US_ASCII);
+        return new String(bytes, StandardCharsets.US_ASCII);
     }
 
     /**

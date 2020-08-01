@@ -20,6 +20,7 @@ package org.apache.pdfbox.examples.interactive.form;
 import java.io.File;
 import java.io.IOException;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDResources;
@@ -43,7 +44,7 @@ public final class DetermineTextFitsField
 
     public static void main(String[] args) throws IOException
     {
-        try (PDDocument document = PDDocument.load(new File("target/SimpleForm.pdf")))
+        try (PDDocument document = Loader.loadPDF(new File("target/SimpleForm.pdf")))
         {
             PDAcroForm acroForm = document.getDocumentCatalog().getAcroForm();
             

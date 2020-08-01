@@ -48,15 +48,31 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.debugger.ui.HighResolutionImageIcon;
+import org.apache.pdfbox.debugger.ui.ImageTypeMenu;
+import org.apache.pdfbox.debugger.ui.RenderDestinationMenu;
+import org.apache.pdfbox.debugger.ui.TextDialog;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.interactive.action.PDAction;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
 import org.apache.pdfbox.pdmodel.interactive.form.PDField;
+import org.apache.pdfbox.text.PDFTextStripper;
 
 /**
  * Display the page number and a page rendering.
@@ -66,6 +82,7 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDField;
  */
 public class PagePane implements ActionListener, AncestorListener, MouseMotionListener, MouseListener
 {
+    private static final Log LOG = LogFactory.getLog(PagePane.class);
     private final PDDocument document;
     private final JLabel statuslabel;
     private final PDPage page;
@@ -74,11 +91,15 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
     private JLabel label;
     private ZoomMenu zoomMenu;
     private RotationMenu rotationMenu;
+    private ImageTypeMenu imageTypeMenu;
+    private RenderDestinationMenu renderDestinationMenu;
     private ViewMenu viewMenu;
     private String labelText = "";
     private final Map<PDRectangle,String> rectMap = new HashMap<>();
     private final AffineTransform defaultTransform = GraphicsEnvironment.getLocalGraphicsEnvironment().
                         getDefaultScreenDevice().getDefaultConfiguration().getDefaultTransform();
+    // more ideas:
+    // https://stackoverflow.com/questions/16440159/dragging-of-shapes-on-jpanel
 
     public PagePane(PDDocument document, COSDictionary pageDict, JLabel statuslabel)
     {
@@ -92,19 +113,84 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
 
     private void initRectMap()
     {
+        try
+        {
+            collectFieldLocations();
+            collectLinkLocations();
+        }
+        catch (IOException ex)
+        {
+            LOG.error(ex.getMessage(), ex);
+        }
+    }
+
+    private void collectLinkLocations() throws IOException
+    {
+        for (PDAnnotation annotation : page.getAnnotations())
+        {
+            if (annotation instanceof PDAnnotationLink)
+            {
+                collectLinkLocation((PDAnnotationLink) annotation);
+            }
+        }
+    }
+
+    private void collectLinkLocation(PDAnnotationLink linkAnnotation) throws IOException
+    {
+        PDAction action = linkAnnotation.getAction();
+        if (action instanceof PDActionURI)
+        {
+            PDActionURI uriAction = (PDActionURI) action;
+            rectMap.put(linkAnnotation.getRectangle(), "URI: " + uriAction.getURI());
+            return;
+        }
+        PDDestination destination;
+        if (action instanceof PDActionGoTo)
+        {
+            PDActionGoTo goToAction = (PDActionGoTo) action;
+            destination = goToAction.getDestination();
+        }
+        else
+        {
+            destination = linkAnnotation.getDestination();
+        }
+        if (destination instanceof PDNamedDestination)
+        {
+            destination = document.getDocumentCatalog().
+                    findNamedDestinationPage((PDNamedDestination) destination);
+        }
+        if (destination instanceof PDPageDestination)
+        {
+            PDPageDestination pageDestination = (PDPageDestination) destination;
+            int pageNum = pageDestination.retrievePageNumber();
+            if (pageNum != -1)
+            {
+                rectMap.put(linkAnnotation.getRectangle(), "Page destination: " + (pageNum + 1));
+            }
+        }
+    }
+
+    private void collectFieldLocations() throws IOException
+    {
         PDAcroForm acroForm = document.getDocumentCatalog().getAcroForm();
         if (acroForm == null)
         {
             return;
         }
+        Set<COSDictionary> dictionarySet = new HashSet<>();
+        for (PDAnnotation annotation : page.getAnnotations())
+        {
+            dictionarySet.add(annotation.getCOSObject());
+        }
         for (PDField field : acroForm.getFieldTree())
         {
-            String fullyQualifiedName = field.getFullyQualifiedName();
             for (PDAnnotationWidget widget : field.getWidgets())
             {
-                if (page.equals(widget.getPage()))
+                // check if the annotation widget is on this page
+                // (checking widget.getPage() also works, but it is sometimes null)
+                if (dictionarySet.contains(widget.getCOSObject()))
                 {
-                    rectMap.put(widget.getRectangle(), fullyQualifiedName);
+                    rectMap.put(widget.getRectangle(), "Field name: " + field.getFullyQualifiedName());
                 }
             }
         }
@@ -156,12 +242,37 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
     public void actionPerformed(ActionEvent actionEvent)
     {
         String actionCommand = actionEvent.getActionCommand();
-        
         if (ZoomMenu.isZoomMenu(actionCommand) ||
             RotationMenu.isRotationMenu(actionCommand) ||
+            ImageTypeMenu.isImageTypeMenu(actionCommand) ||
+            RenderDestinationMenu.isRenderDestinationMenu(actionCommand) ||
             ViewMenu.isRenderingOptions(actionCommand))
         {
             startRendering();
+        }
+        else if (ViewMenu.isExtractText(actionEvent))
+        {
+            startExtracting();
+        }
+    }
+
+    private void startExtracting()
+    {
+        TextDialog textDialog = TextDialog.instance();
+        textDialog.setSize(800, 400);
+        textDialog.setVisible(true);
+        textDialog.setLocation(getPanel().getLocationOnScreen().x + getPanel().getWidth() / 2,
+                               getPanel().getLocationOnScreen().y + getPanel().getHeight() / 2);
+        try
+        {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setStartPage(pageIndex + 1);
+            stripper.setEndPage(pageIndex + 1);
+            textDialog.setText(stripper.getText(document));
+        }
+        catch (IOException ex)
+        {
+            LOG.error(ex.getMessage(), ex);
         }
     }
 
@@ -169,14 +280,7 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
     {
         // render in a background thread: rendering is read-only, so this should be ok, despite
         // the fact that PDDocument is not officially thread safe
-        new RenderWorker(ZoomMenu.getZoomScale(),
-                RotationMenu.getRotationDegrees(),
-                ViewMenu.isShowTextStripper(),
-                ViewMenu.isShowTextStripperBeads(),
-                ViewMenu.isShowFontBBox(),
-                ViewMenu.isShowGlyphBounds(),
-                ViewMenu.isAllowSubsampling()
-        ).execute();
+        new RenderWorker().execute();
         zoomMenu.setPageZoomScale(ZoomMenu.getZoomScale());
     }
 
@@ -189,7 +293,15 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
         rotationMenu = RotationMenu.getInstance();
         rotationMenu.addMenuListeners(this);
         rotationMenu.setEnableMenu(true);
-        
+
+        imageTypeMenu = ImageTypeMenu.getInstance();
+        imageTypeMenu.addMenuListeners(this);
+        imageTypeMenu.setEnableMenu(true);
+
+        renderDestinationMenu = RenderDestinationMenu.getInstance();
+        renderDestinationMenu.addMenuListeners(this);
+        renderDestinationMenu.setEnableMenu(true);
+
         viewMenu = ViewMenu.getInstance(null);
 
         JMenu menuInstance = viewMenu.getMenu();
@@ -212,7 +324,9 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
         boolean isFirstEntrySkipped = false;
         zoomMenu.setEnableMenu(false);
         rotationMenu.setEnableMenu(false);
-        
+        imageTypeMenu.setEnableMenu(false);
+        renderDestinationMenu.setEnableMenu(false);
+
         JMenu menuInstance = viewMenu.getMenu();
         int itemCount = menuInstance.getItemCount();
         
@@ -238,11 +352,13 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
     @Override
     public void ancestorMoved(AncestorEvent ancestorEvent)
     {
+        // do nothing
     }
 
     @Override
     public void mouseDragged(MouseEvent e)
     {
+        // do nothing
     }
 
     /**
@@ -260,7 +376,8 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
         float zoomScale = zoomMenu.getPageZoomScale();
         float x = e.getX() / zoomScale * (float) defaultTransform.getScaleX();
         float y = e.getY() / zoomScale * (float) defaultTransform.getScaleY();
-        int x1, y1;
+        int x1;
+        int y1;
         switch ((RotationMenu.getRotationDegrees() + page.getRotation()) % 360)
         {
             case 90:
@@ -288,7 +405,7 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
         {
             if (entry.getKey().contains(x1, y1))
             {
-                text += ", field: " + rectMap.get(entry.getKey());
+                text += ", " + rectMap.get(entry.getKey());
                 break;
             }
         }
@@ -299,21 +416,25 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
     @Override
     public void mouseClicked(MouseEvent e)
     {
+        // do nothing
     }
 
     @Override
     public void mousePressed(MouseEvent e)
     {
+        // do nothing
     }
 
     @Override
     public void mouseReleased(MouseEvent e)
     {
+        // do nothing
     }
 
     @Override
     public void mouseEntered(MouseEvent e)
     {
+        // do nothing
     }
 
     @Override
@@ -327,40 +448,26 @@ public class PagePane implements ActionListener, AncestorListener, MouseMotionLi
      */
     private final class RenderWorker extends SwingWorker<BufferedImage, Integer>
     {
-        private final float scale;
-        private final int rotation;
-        private final boolean showTextStripper;
-        private final boolean showTextStripperBeads;
-        private final boolean showFontBBox;
-        private final boolean showGlyphBounds;
-        private final boolean allowSubsampling;
-
-        private RenderWorker(float scale, int rotation, boolean showTextStripper,
-                             boolean showTextStripperBeads, boolean showFontBBox,
-                             boolean showGlyphBounds, boolean allowSubsampling)
-        {
-            this.scale = scale;
-            this.rotation = rotation;
-            this.showTextStripper = showTextStripper;
-            this.showTextStripperBeads = showTextStripperBeads;
-            this.showFontBBox = showFontBBox;
-            this.showGlyphBounds = showGlyphBounds;
-            this.allowSubsampling = allowSubsampling;
-        }
-
         @Override
         protected BufferedImage doInBackground() throws IOException
         {
+            // rendering can take a long time, so remember all options that are used later
+            float scale = ZoomMenu.getZoomScale();
+            boolean showTextStripper = ViewMenu.isShowTextStripper();
+            boolean showTextStripperBeads = ViewMenu.isShowTextStripperBeads();
+            boolean showFontBBox = ViewMenu.isShowFontBBox();
+            int rotation = RotationMenu.getRotationDegrees();
+
             label.setIcon(null);
             labelText = "Rendering...";
             label.setText(labelText);
             statuslabel.setText(labelText);
-            
-            PDFRenderer renderer = new DebugPDFRenderer(document, this.showGlyphBounds);
-            renderer.setSubsamplingAllowed(allowSubsampling);
+
+            PDFRenderer renderer = new DebugPDFRenderer(document, ViewMenu.isShowGlyphBounds());
+            renderer.setSubsamplingAllowed(ViewMenu.isAllowSubsampling());
 
             long t0 = System.nanoTime();
-            BufferedImage image = renderer.renderImage(pageIndex, scale);
+            BufferedImage image = renderer.renderImage(pageIndex, scale, ImageTypeMenu.getImageType(), RenderDestinationMenu.getRenderDestination());
             long t1 = System.nanoTime();
 
             long ms = TimeUnit.MILLISECONDS.convert(t1 - t0, TimeUnit.NANOSECONDS);

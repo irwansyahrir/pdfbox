@@ -68,14 +68,11 @@ public class PDFMergerExample
         String creator = "Alexander Kriegisch";
         String subject = "Subject with umlauts ÄÖÜ";
 
-        ByteArrayOutputStream mergedPDFOutputStream = null;
-        COSStream cosStream = null;
-        try
+        try (COSStream cosStream = new COSStream();
+             ByteArrayOutputStream mergedPDFOutputStream = new ByteArrayOutputStream())
         {
             // If you're merging in a servlet, you can modify this example to use the outputStream only
             // as the response as shown here: http://stackoverflow.com/a/36894346/535646
-            mergedPDFOutputStream = new ByteArrayOutputStream();
-            cosStream = new COSStream();
 
             PDFMergerUtility pdfMerger = createPDFMergerUtility(sources, mergedPDFOutputStream);
 
@@ -97,12 +94,7 @@ public class PDFMergerExample
         }
         finally
         {
-            for (InputStream source : sources)
-            {
-                IOUtils.closeQuietly(source);
-            }
-            IOUtils.closeQuietly(cosStream);
-            IOUtils.closeQuietly(mergedPDFOutputStream);
+            sources.forEach(IOUtils::closeQuietly);
         }
     }
 

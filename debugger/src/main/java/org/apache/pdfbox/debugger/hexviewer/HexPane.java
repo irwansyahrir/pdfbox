@@ -40,6 +40,7 @@ import javax.swing.JPanel;
  * HexPane shows the byte in a Grid table where every row has 16 bytes. It only draws bytes those are
  * only visible at a given time.
  */
+@SuppressWarnings("squid:S1948")
 class HexPane extends JPanel implements KeyListener, MouseListener, MouseMotionListener, HexModelChangeListener
 {
     private final HexModel model;
@@ -170,15 +171,15 @@ class HexPane extends JPanel implements KeyListener, MouseListener, MouseMotionL
      */
     private int getIndexForPoint(Point point)
     {
-        if (point.x <= 20 || point.x >= (16 * HexView.CHAR_WIDTH)+20 )
+        if (point.x <= 20 || point.x >= (16 * HexView.CHAR_WIDTH) + 20)
         {
             return -1;
         }
         int y = point.y;
-        int lineNumber = (y+ (HexView.CHAR_HEIGHT -(y % HexView.CHAR_HEIGHT)))/ HexView.CHAR_HEIGHT;
+        int lineNumber = (y + (HexView.CHAR_HEIGHT - (y % HexView.CHAR_HEIGHT))) / HexView.CHAR_HEIGHT;
         int x = point.x - 20;
-        int elementNumber = (x / HexView.CHAR_WIDTH);
-        return  (lineNumber-1) * 16 + elementNumber;
+        int elementNumber = x / HexView.CHAR_WIDTH;
+        return (lineNumber - 1) * 16 + elementNumber;
     }
 
     /**
@@ -218,18 +219,12 @@ class HexPane extends JPanel implements KeyListener, MouseListener, MouseMotionL
 
     private void fireSelectionChanged(SelectEvent event)
     {
-        for (SelectionChangeListener listener:selectionChangeListeners)
-        {
-            listener.selectionChanged(event);
-        }
+        selectionChangeListeners.forEach(listener -> listener.selectionChanged(event));
     }
 
     private void fireHexValueChanged(byte value, int index)
     {
-        for (HexChangeListener listener:hexChangeListeners)
-        {
-            listener.hexChanged(new HexChangedEvent(value, index));
-        }
+        hexChangeListeners.forEach(listener -> listener.hexChanged(new HexChangedEvent(value, index)));
     }
 
     public void addSelectionChangeListener(SelectionChangeListener listener)
@@ -306,7 +301,7 @@ class HexPane extends JPanel implements KeyListener, MouseListener, MouseMotionL
     @Override
     public void keyReleased(KeyEvent keyEvent)
     {
-
+        // do nothing
     }
 
     @Override
@@ -324,36 +319,37 @@ class HexPane extends JPanel implements KeyListener, MouseListener, MouseMotionL
     @Override
     public void mousePressed(MouseEvent mouseEvent)
     {
-
+        // do nothing
     }
 
     @Override
     public void mouseReleased(MouseEvent mouseEvent)
     {
+        // do nothing
     }
 
     @Override
     public void mouseEntered(MouseEvent mouseEvent)
     {
-
+        // do nothing
     }
 
     @Override
     public void mouseExited(MouseEvent mouseEvent)
     {
-
+        // do nothing
     }
 
     @Override
     public void mouseDragged(MouseEvent mouseEvent)
     {
-
+        // do nothing
     }
 
     @Override
     public void mouseMoved(MouseEvent mouseEvent)
     {
-
+        // do nothing
     }
 
     private static boolean isHexChar(char c)

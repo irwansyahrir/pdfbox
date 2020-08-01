@@ -21,6 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assert.assertNotEquals;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -28,6 +29,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -35,6 +37,8 @@ import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.rendering.TestPDFToImage;
@@ -69,7 +73,7 @@ public class PDAcroFormTest
         // the /Fields entry has been created with the AcroForm
         // as this is a required entry
         assertNotNull(acroForm.getFields());
-        assertEquals(acroForm.getFields().size(),0);
+        assertEquals(0, acroForm.getFields().size());
         
         // there shouldn't be an exception if there is no such field
         assertNull(acroForm.getField("foo"));
@@ -80,7 +84,7 @@ public class PDAcroFormTest
         
         // ensure there is always an empty collection returned
         assertNotNull(acroForm.getFields());
-        assertEquals(acroForm.getFields().size(),0);
+        assertEquals(0, acroForm.getFields().size());
 
         // there shouldn't be an exception if there is no such field
         assertNull(acroForm.getField("foo"));
@@ -91,14 +95,14 @@ public class PDAcroFormTest
     {
         assertTrue(acroForm.getDefaultAppearance().isEmpty());
         acroForm.setDefaultAppearance("/Helv 0 Tf 0 g");
-        assertEquals(acroForm.getDefaultAppearance(),"/Helv 0 Tf 0 g");
+        assertEquals("/Helv 0 Tf 0 g", acroForm.getDefaultAppearance());
     }
     
     @Test
     public void testFlatten() throws IOException
     {
         File file = new File(OUT_DIR, "AlignmentTests-flattened.pdf");
-        try (PDDocument testPdf = PDDocument.load(new File(IN_DIR, "AlignmentTests.pdf")))
+        try (PDDocument testPdf = Loader.loadPDF(new File(IN_DIR, "AlignmentTests.pdf")))
         {
             testPdf.getDocumentCatalog().getAcroForm().flatten();
             assertTrue(testPdf.getDocumentCatalog().getAcroForm().getFields().isEmpty());
@@ -124,7 +128,7 @@ public class PDAcroFormTest
     {
         File file = new File(OUT_DIR, "AlignmentTests-flattened-noRef.pdf");
 
-        try (PDDocument testPdf = PDDocument.load(new File(IN_DIR, "AlignmentTests.pdf")))
+        try (PDDocument testPdf = Loader.loadPDF(new File(IN_DIR, "AlignmentTests.pdf")))
         {
             PDAcroForm acroFormToTest = testPdf.getDocumentCatalog().getAcroForm();
             for (PDField field : acroFormToTest.getFieldTree()) {
@@ -133,6 +137,10 @@ public class PDAcroFormTest
                 }
             }
             acroFormToTest.flatten();
+
+            // 36 non widget annotations shall not be flattened
+            assertEquals(36, testPdf.getPage(0).getAnnotations().size());
+
             assertTrue(acroFormToTest.getFields().isEmpty());
             testPdf.save(file);
         }
@@ -152,7 +160,7 @@ public class PDAcroFormTest
         
         List<PDField> fieldsToFlatten = new ArrayList<>();
                 
-        try (PDDocument testPdf = PDDocument.load(new File(IN_DIR, "AlignmentTests.pdf")))
+        try (PDDocument testPdf = Loader.loadPDF(new File(IN_DIR, "AlignmentTests.pdf")))
         {
             PDAcroForm acroFormToFlatten = testPdf.getDocumentCatalog().getAcroForm();
             int numFieldsBeforeFlatten = acroFormToFlatten.getFields().size();
@@ -186,7 +194,7 @@ public class PDAcroFormTest
         {
             byte[] pdfBytes =  createAcroFormWithMissingResourceInformation();
             
-            try (PDDocument pdfDocument = PDDocument.load(pdfBytes))
+            try (PDDocument pdfDocument = Loader.loadPDF(pdfBytes))
             {
                 // do a low level access to the AcroForm to avoid the generation of missing entries
                 PDDocumentCatalog documentCatalog = pdfDocument.getDocumentCatalog();
@@ -220,7 +228,7 @@ public class PDAcroFormTest
         {
             byte[] pdfBytes =  createAcroFormWithMissingResourceInformation();
 
-            try (PDDocument pdfDocument = PDDocument.load(pdfBytes))
+            try (PDDocument pdfDocument = Loader.loadPDF(pdfBytes))
             {
                 PDDocumentCatalog documentCatalog = pdfDocument.getDocumentCatalog();
                 
@@ -291,6 +299,57 @@ public class PDAcroFormTest
         }
     }
 
+    /**
+     * PDFBOX-3732, PDFBOX-4303, PDFBOX-4393: Test whether /Helv and /ZaDb get added, but only if
+     * they don't exist.
+     */
+    @Test
+    public void testAcroFormDefaultFonts() throws IOException
+    {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (PDDocument doc = new PDDocument())
+        {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDAcroForm acroForm2 = new PDAcroForm(doc);
+            doc.getDocumentCatalog().setAcroForm(acroForm2);
+            PDResources defaultResources = acroForm2.getDefaultResources();
+            assertNull(defaultResources);
+            defaultResources = new PDResources();
+            acroForm2.setDefaultResources(defaultResources);
+            assertNull(defaultResources.getFont(COSName.HELV));
+            assertNull(defaultResources.getFont(COSName.ZA_DB));
+
+            // getting AcroForm sets the two fonts
+            acroForm2 = doc.getDocumentCatalog().getAcroForm();
+            defaultResources = acroForm2.getDefaultResources();
+            assertNotNull(defaultResources.getFont(COSName.HELV));
+            assertNotNull(defaultResources.getFont(COSName.ZA_DB));
+
+            // repeat with a new AcroForm (to delete AcroForm cache) and thus missing /DR
+            doc.getDocumentCatalog().setAcroForm(new PDAcroForm(doc));
+            acroForm2 = doc.getDocumentCatalog().getAcroForm();
+            defaultResources = acroForm2.getDefaultResources();
+            PDFont helv = defaultResources.getFont(COSName.HELV);
+            PDFont zadb = defaultResources.getFont(COSName.ZA_DB);
+            assertNotNull(helv);
+            assertNotNull(zadb);
+            doc.save(baos);
+        }
+        try (PDDocument doc = Loader.loadPDF(baos.toByteArray()))
+        {
+            PDAcroForm acroForm2 = doc.getDocumentCatalog().getAcroForm();
+            PDResources defaultResources = acroForm2.getDefaultResources();
+            PDFont helv = defaultResources.getFont(COSName.HELV);
+            PDFont zadb = defaultResources.getFont(COSName.ZA_DB);
+            assertNotNull(helv);
+            assertNotNull(zadb);
+            // make sure that font wasn't overwritten
+            assertNotEquals(PDType1Font.HELVETICA, helv);
+            assertNotEquals(PDType1Font.ZAPF_DINGBATS, zadb);          
+        }
+    }
+
     @After
     public void tearDown() throws IOException
     {
@@ -352,4 +411,3 @@ public class PDAcroFormTest
         return count;
     } 
 }
-

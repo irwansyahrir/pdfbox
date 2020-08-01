@@ -23,6 +23,9 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
 
+import org.apache.pdfbox.Loader;
+import org.junit.Assert;
+
 import org.junit.Test;
 
 /**
@@ -37,10 +40,36 @@ public class FDFAnnotationTest
     public void loadXFDFAnnotations() throws IOException, URISyntaxException
     {
         File f = new File(FDFAnnotationTest.class.getResource("xfdf-test-document-annotations.xml").toURI());
-        try (FDFDocument fdfDoc = FDFDocument.loadXFDF(f))
+        try (FDFDocument fdfDoc = Loader.loadXFDF(f))
         {
             List<FDFAnnotation> fdfAnnots = fdfDoc.getCatalog().getFDF().getAnnotations();
-            assertEquals(17, fdfAnnots.size());
+            assertEquals(18, fdfAnnots.size());
+            
+            // test PDFBOX-4345 and PDFBOX-3646
+            // before the fix, the richtext output was
+            // <body style="font:12pt Helvetica; color:#D66C00;" xfa:APIVersion="Acrobat:7.0.8" xfa:spec="2.0.2" xmlns="http://www.w3.org/1999/xhtml" xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/"><p dir="ltr"><span style="text-decoration:word;font-family:Helvetica">P&2</span></p></body>
+            // i.e. the & was not escaped, and P&amp;1 and P&amp;3 was missing
+            boolean testedPDFBox4345andPDFBox3646 = false;
+            for (FDFAnnotation ann : fdfAnnots)
+            {
+                if (ann instanceof FDFAnnotationFreeText)
+                {
+                    FDFAnnotationFreeText annotationFreeText = (FDFAnnotationFreeText) ann;
+                    if ("P&1 P&2 P&3".equals(annotationFreeText.getContents()))
+                    {
+                        testedPDFBox4345andPDFBox3646 = true;
+                        Assert.assertEquals("<body style=\"font:12pt Helvetica; "
+                                + "color:#D66C00;\" xfa:APIVersion=\"Acrobat:7.0.8\" "
+                                + "xfa:spec=\"2.0.2\" xmlns=\"http://www.w3.org/1999/xhtml\" "
+                                + "xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\">\n" 
+                                + "          <p dir=\"ltr\">P&amp;1 <span style=\"text-"
+                                + "decoration:word;font-family:Helvetica\">P&amp;2</span> "
+                                + "P&amp;3</p>\n"
+                                + "        </body>", annotationFreeText.getRichContents().trim());
+                    }
+                }
+            }
+            Assert.assertTrue(testedPDFBox4345andPDFBox3646);
         }
     }
 }

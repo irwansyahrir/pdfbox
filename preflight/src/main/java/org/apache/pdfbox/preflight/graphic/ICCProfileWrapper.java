@@ -21,6 +21,7 @@
 
 package org.apache.pdfbox.preflight.graphic;
 
+import java.awt.color.ColorSpace;
 import java.awt.color.ICC_ColorSpace;
 import java.awt.color.ICC_Profile;
 import java.io.IOException;
@@ -35,12 +36,9 @@ import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.PreflightDocument;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
 import org.apache.pdfbox.preflight.exception.ValidationException;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 
 
-import static org.apache.pdfbox.preflight.PreflightConstants.DOCUMENT_DICTIONARY_KEY_OUTPUT_INTENTS;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_OUTPUT_INTENT_ICC_PROFILE_INVALID;
-import static org.apache.pdfbox.preflight.PreflightConstants.OUTPUT_INTENT_DICTIONARY_KEY_DEST_OUTPUT_PROFILE;
 
 /**
  * This class embeds an instance of java.awt.color.ICC_Profile which represent the ICCProfile defined by the
@@ -89,7 +87,7 @@ public class ICCProfileWrapper
      */
     public boolean isRGBColorSpace()
     {
-        return ICC_ColorSpace.TYPE_RGB == colorSpace.getType();
+        return ColorSpace.TYPE_RGB == colorSpace.getType();
     }
 
     /**
@@ -99,7 +97,7 @@ public class ICCProfileWrapper
      */
     public boolean isCMYKColorSpace()
     {
-        return ICC_ColorSpace.TYPE_CMYK == colorSpace.getType();
+        return ColorSpace.TYPE_CMYK == colorSpace.getType();
     }
 
     /**
@@ -109,7 +107,7 @@ public class ICCProfileWrapper
      */
     public boolean isGrayColorSpace()
     {
-        return ICC_ColorSpace.TYPE_GRAY == colorSpace.getType();
+        return ColorSpace.TYPE_GRAY == colorSpace.getType();
     }
 
     /**
@@ -118,39 +116,25 @@ public class ICCProfileWrapper
      * 
      * @param context
      * @return an instance of ICCProfileWrapper or null if there are no DestOutputProfile
-     * @throws ValidationException
-     *             if an IOException occurs during the DestOutputProfile parsing
      */
-    private static ICCProfileWrapper searchFirstICCProfile(PreflightContext context) throws ValidationException
+    private static ICCProfileWrapper searchFirstICCProfile(PreflightContext context)
     {
         PreflightDocument document = context.getDocument();
         PDDocumentCatalog catalog = document.getDocumentCatalog();
-        COSBase cBase = catalog.getCOSObject().getItem(COSName.getPDFName(DOCUMENT_DICTIONARY_KEY_OUTPUT_INTENTS));
-        COSArray outputIntents = COSUtils.getAsArray(cBase, document.getDocument());
+        COSArray outputIntents = catalog.getCOSObject().getCOSArray(COSName.OUTPUT_INTENTS);
 
         for (int i = 0; outputIntents != null && i < outputIntents.size(); ++i)
         {
-            COSDictionary outputIntentDict = COSUtils.getAsDictionary(outputIntents.get(i), document.getDocument());
-            COSBase destOutputProfile = outputIntentDict.getItem(OUTPUT_INTENT_DICTIONARY_KEY_DEST_OUTPUT_PROFILE);
-            if (destOutputProfile != null)
+            COSDictionary outputIntentDict = (COSDictionary) outputIntents.getObject(i);
+            COSBase destOutputProfile = outputIntentDict
+                    .getDictionaryObject(COSName.DEST_OUTPUT_PROFILE);
+            if (destOutputProfile instanceof COSStream)
             {
-                try
+                try (InputStream is = ((COSStream) destOutputProfile).createInputStream())
                 {
-                    COSStream stream = COSUtils.getAsStream(destOutputProfile, document.getDocument());
-                    if (stream != null)
-                    {
-                        InputStream is = stream.createInputStream();
-                        try
-                        {
-                            return new ICCProfileWrapper(ICC_Profile.getInstance(is));
-                        }
-                        finally
-                        {
-                            is.close();
-                        }
-                    }
+                    return new ICCProfileWrapper(ICC_Profile.getInstance(is));
                 }
-                catch (IllegalArgumentException e)
+                catch (ArrayIndexOutOfBoundsException | IllegalArgumentException e)
                 {
                     context.addValidationError(new ValidationError(ERROR_GRAPHIC_OUTPUT_INTENT_ICC_PROFILE_INVALID,
                             "DestOutputProfile isn't a valid ICCProfile. Caused by : " + e.getMessage(), e));

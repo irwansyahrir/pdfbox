@@ -28,7 +28,6 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.common.COSArrayList;
-import org.apache.pdfbox.pdmodel.common.COSObjectable;
 import org.apache.pdfbox.pdmodel.fdf.FDFField;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 
@@ -90,17 +89,13 @@ public class PDNonTerminalField extends PDField
         List<PDField> children = getChildren();
         for (int i = 0; fdfKids != null && i < fdfKids.size(); i++)
         {
-            for (COSObjectable pdKid : children)
+            for (PDField pdChild : children)
             {
-                if (pdKid instanceof PDField)
+                FDFField fdfChild = fdfKids.get(i);
+                String fdfName = fdfChild.getPartialFieldName();
+                if (fdfName != null && fdfName.equals(pdChild.getPartialName()))
                 {
-                    PDField pdChild = (PDField) pdKid;
-                    FDFField fdfChild = fdfKids.get(i);
-                    String fdfName = fdfChild.getPartialFieldName();
-                    if (fdfName != null && fdfName.equals(pdChild.getPartialName()))
-                    {
-                        pdChild.importFDF(fdfChild);
-                    }
+                    pdChild.importFDF(fdfChild);
                 }
             }
         }
@@ -211,9 +206,8 @@ public class PDNonTerminalField extends PDField
      * <p><b>Note:</b> while non-terminal fields <b>do</b> inherit field values, this method returns
      * the local value, without inheritance.
      * @param object
-     * @throws java.io.IOException
      */
-    public void setValue(COSBase object) throws IOException
+    public void setValue(COSBase object)
     {
         getCOSObject().setItem(COSName.V, object);
         // todo: propagate change event to children?
@@ -262,7 +256,7 @@ public class PDNonTerminalField extends PDField
     @Override
     public List<PDAnnotationWidget> getWidgets()
     {
-        //TODO shouldn't we return a non modifiable list?
-        return Collections.emptyList();
+        List<PDAnnotationWidget> emptyList = Collections.emptyList();
+        return Collections.unmodifiableList(emptyList);
     }
 }

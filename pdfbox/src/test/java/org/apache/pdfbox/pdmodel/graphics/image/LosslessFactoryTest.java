@@ -37,15 +37,12 @@ import java.util.Hashtable;
 import java.util.Random;
 import javax.imageio.ImageIO;
 import junit.framework.TestCase;
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertNotNull;
-import static junit.framework.TestCase.assertTrue;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDPageContentStream.AppendMode;
-import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import static org.apache.pdfbox.pdmodel.graphics.image.ValidateXImage.checkIdent;
@@ -122,7 +119,7 @@ public class LosslessFactoryTest extends TestCase
         document.save(pdfFile);
         document.close();
         
-        document = PDDocument.load(pdfFile, (String)null);
+        document = Loader.loadPDF(pdfFile, (String) null);
         new PDFRenderer(document).renderImage(0);
         document.close();
     }
@@ -238,6 +235,45 @@ public class LosslessFactoryTest extends TestCase
     }
 
     /**
+     * Tests USHORT_555_RGB LosslessFactoryTest#createFromImage(PDDocument document, BufferedImage
+     * image). This should create an 8-bit-image; prevent the problems from PDFBOX-4674 in case
+     * image creation is modified in the future.
+     *
+     * @throws java.io.IOException
+     */
+    public void testCreateLosslessFromImageUSHORT_555_RGB() throws IOException
+    {
+        PDDocument document = new PDDocument();
+        BufferedImage image = ImageIO.read(this.getClass().getResourceAsStream("png.png"));
+
+        // create an USHORT_555_RGB image
+        int w = image.getWidth();
+        int h = image.getHeight();
+        BufferedImage rgbImage = new BufferedImage(w, h, BufferedImage.TYPE_USHORT_555_RGB);
+        Graphics ag = rgbImage.getGraphics();
+        ag.drawImage(image, 0, 0, null);
+        ag.dispose();
+
+        for (int x = 0; x < rgbImage.getWidth(); ++x)
+        {
+            for (int y = 0; y < rgbImage.getHeight(); ++y)
+            {
+                rgbImage.setRGB(x, y, (rgbImage.getRGB(x, y) & 0xFFFFFF) | ((y / 10 * 10) << 24));
+            }
+        }
+
+        PDImageXObject ximage = LosslessFactory.createFromImage(document, rgbImage);
+
+        validate(ximage, 8, w, h, "png", PDDeviceRGB.INSTANCE.getName());
+        checkIdent(rgbImage, ximage.getImage());
+        checkIdentRGB(rgbImage, ximage.getOpaqueImage());
+
+        assertNull(ximage.getSoftMask());
+
+        doWritePDF(document, ximage, testResultsDir, "ushort555rgb.pdf");
+    }
+
+    /**
      * Tests LosslessFactoryTest#createFromImage(PDDocument document,
      * BufferedImage image) with transparent GIF
      *
@@ -263,6 +299,36 @@ public class LosslessFactoryTest extends TestCase
         assertEquals(2, colorCount(ximage.getSoftMask().getImage()));
 
         doWritePDF(document, ximage, testResultsDir, "gif.pdf");
+    }
+
+    /**
+     * Tests LosslessFactoryTest#createFromImage(PDDocument document,
+     * BufferedImage image) with a transparent 1 bit GIF. (PDFBOX-4672)
+     * This ends up as RGB because the 1 bit fast path doesn't support transparency.
+     *
+     * @throws java.io.IOException
+     */
+    public void testCreateLosslessFromTransparent1BitGIF() throws IOException
+    {
+        PDDocument document = new PDDocument();
+        BufferedImage image = ImageIO.read(this.getClass().getResourceAsStream("gif-1bit-transparent.gif"));
+
+        assertEquals(Transparency.BITMASK, image.getColorModel().getTransparency());
+        assertEquals(BufferedImage.TYPE_BYTE_BINARY, image.getType());
+
+        PDImageXObject ximage = LosslessFactory.createFromImage(document, image);
+
+        int w = image.getWidth();
+        int h = image.getHeight();
+        validate(ximage, 8, w, h, "png", PDDeviceRGB.INSTANCE.getName());
+        checkIdent(image, ximage.getImage());
+        checkIdentRGB(image, ximage.getOpaqueImage());
+
+        assertNotNull(ximage.getSoftMask());
+        validate(ximage.getSoftMask(), 1, w, h, "png", PDDeviceGray.INSTANCE.getName());
+        assertEquals(2, colorCount(ximage.getSoftMask().getImage()));
+
+        doWritePDF(document, ximage, testResultsDir, "gif-1bit-transparent.pdf");
     }
 
     /**
@@ -412,7 +478,7 @@ public class LosslessFactoryTest extends TestCase
         File pdfFile = new File(testResultsDir, pdfFilename);
         document.save(pdfFile);
         document.close();
-        document = PDDocument.load(pdfFile, (String)null);
+        document = Loader.loadPDF(pdfFile, (String) null);
         new PDFRenderer(document).renderImage(0);
         document.close();
     }
@@ -431,21 +497,12 @@ public class LosslessFactoryTest extends TestCase
         BufferedImage imageCMYK = op.filter(image, null);
 
         PDImageXObject ximage = LosslessFactory.createFromImage(document, imageCMYK);
-        validate(ximage, 8, imageCMYK.getWidth(), imageCMYK.getHeight(), "png", PDDeviceCMYK.INSTANCE.getName());
+        validate(ximage, 8, imageCMYK.getWidth(), imageCMYK.getHeight(), "png", "ICCBased");
 
         doWritePDF(document, ximage, testResultsDir, "cmyk.pdf");
-
-        // The image in CMYK got color-truncated because the ISO_Coated colorspace is way smaller 
-        // than the sRGB colorspace. The image is converted back to sRGB when calling PDImageXObject.getImage().
-        // So to be able to check the image data we must also convert our CMYK Image back to sRGB
-        //BufferedImage compareImageRGB = new BufferedImage(imageCMYK.getWidth(), imageCMYK.getHeight(),
-        //BufferedImage.TYPE_INT_BGR);
-        //Graphics2D graphics = compareImageRGB.createGraphics();
-        //graphics.drawImage(imageCMYK, 0, 0, null);
-        //graphics.dispose();
-        //ImageIO.write(compareImageRGB, "TIFF", new File("/tmp/compare.tiff"));
-        //ImageIO.write(ximage.getImage(), "TIFF", new File("/tmp/compare2.tiff"));
-        //checkIdent(compareImageRGB, ximage.getImage());
+        
+        // still slight difference of 1 color level
+        //checkIdent(imageCMYK, ximage.getImage());
     }
 
     public void testCreateLosslessFrom16Bit() throws IOException
@@ -459,7 +516,8 @@ public class LosslessFactoryTest extends TestCase
                 ColorModel.OPAQUE, dataBufferType);
         WritableRaster targetRaster = Raster.createInterleavedRaster(dataBufferType, image.getWidth(), image.getHeight(),
                 targetCS.getNumComponents(), new Point(0, 0));
-        BufferedImage img16Bit = new BufferedImage(colorModel, targetRaster, false, new Hashtable());
+        BufferedImage img16Bit = new BufferedImage(colorModel, targetRaster, false,
+                new Hashtable<>());
         ColorConvertOp op = new ColorConvertOp(image.getColorModel().getColorSpace(), targetCS, null);
         op.filter(image, img16Bit);
 

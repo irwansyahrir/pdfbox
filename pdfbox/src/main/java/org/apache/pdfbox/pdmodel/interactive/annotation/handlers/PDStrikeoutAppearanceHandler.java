@@ -24,6 +24,7 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationStrikeout;
 import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
+import org.apache.pdfbox.pdmodel.PDDocument;
 
 /**
  *
@@ -35,6 +36,11 @@ public class PDStrikeoutAppearanceHandler extends PDAbstractAppearanceHandler
     public PDStrikeoutAppearanceHandler(PDAnnotation annotation)
     {
         super(annotation);
+    }
+
+    public PDStrikeoutAppearanceHandler(PDAnnotation annotation, PDDocument document)
+    {
+        super(annotation, document);
     }
 
     @Override
@@ -104,7 +110,7 @@ public class PDStrikeoutAppearanceHandler extends PDAbstractAppearanceHandler
             // https://stackoverflow.com/questions/9855814/pdf-spec-vs-acrobat-creation-quadpoints
             for (int i = 0; i < pathsArray.length / 8; ++i)
             {
-                // get mid point between bounds, substract the line width to approximate what Adobe is doing
+                // get mid point between bounds, subtract the line width to approximate what Adobe is doing
                 // See e.g. CTAN-example-Annotations.pdf and PLPDF.com-MarkupAnnotations.pdf
                 // and https://bugs.ghostscript.com/show_bug.cgi?id=693664
                 // do the math for diagonal annotations with this weird old trick:

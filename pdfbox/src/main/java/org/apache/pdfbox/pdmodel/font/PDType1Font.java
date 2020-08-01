@@ -175,15 +175,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
      */
     public PDType1Font(PDDocument doc, InputStream pfbIn) throws IOException
     {
-        PDType1FontEmbedder embedder = new PDType1FontEmbedder(doc, dict, pfbIn, null);
-        encoding = embedder.getFontEncoding();
-        glyphList = embedder.getGlyphList();
-        type1font = embedder.getType1Font();
-        genericFont = embedder.getType1Font();
-        isEmbedded = true;
-        isDamaged = false;
-        fontMatrixTransform = new AffineTransform();
-        codeToBytesMap = new HashMap<>();
+        this(doc, pfbIn, null);
     }
 
     /**
@@ -197,7 +189,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
     public PDType1Font(PDDocument doc, InputStream pfbIn, Encoding encoding) throws IOException
     {
         PDType1FontEmbedder embedder = new PDType1FontEmbedder(doc, dict, pfbIn, encoding);
-        this.encoding = encoding;
+        this.encoding = encoding == null ? embedder.getFontEncoding() : encoding;
         glyphList = embedder.getGlyphList();
         type1font = embedder.getType1Font();
         genericFont = embedder.getType1Font();
@@ -454,7 +446,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
         Map<String, Integer> inverted = encoding.getNameToCodeMap();
         int code = inverted.get(name);
         bytes = new byte[] { (byte)code };
-        codeToBytesMap.put(code, bytes);
+        codeToBytesMap.put(unicode, bytes);
         return bytes;
     }
 
@@ -583,21 +575,34 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
         {
             return name;
         }
-        else
+
+        // try alternative name
+        String altName = ALT_NAMES.get(name);
+        if (altName != null && !name.equals(".notdef") && genericFont.hasGlyph(altName))
         {
-            // try alternative name
-            String altName = ALT_NAMES.get(name);
-            if (altName != null && !name.equals(".notdef") && genericFont.hasGlyph(altName))
+            return altName;
+        }
+
+        // try unicode name
+        String unicodes = getGlyphList().toUnicode(name);
+        if (unicodes != null && unicodes.length() == 1)
+        {
+            String uniName = getUniNameOfCodePoint(unicodes.codePointAt(0));
+            if (genericFont.hasGlyph(uniName))
             {
-                return altName;
+                return uniName;
             }
-            else
+            // PDFBOX-4017: no postscript table on Windows 10, and the low uni00NN
+            // names are not found in Symbol font. What works is using the PDF code plus 0xF000
+            // while disregarding encoding from the PDF (because of file from PDFBOX-1606,
+            // makes sense because this segment is about finding the name in a standard font)
+            //TODO bring up better solution than this
+            if ("SymbolMT".equals(genericFont.getName()))
             {
-                // try unicode name
-                String unicodes = getGlyphList().toUnicode(name);
-                if (unicodes != null && unicodes.length() == 1)
+                Integer code = SymbolEncoding.INSTANCE.getNameToCodeMap().get(name);
+                if (code != null)
                 {
-                    String uniName = getUniNameOfCodePoint(unicodes.codePointAt(0));
+                    uniName = getUniNameOfCodePoint(code + 0xF000);
                     if (genericFont.hasGlyph(uniName))
                     {
                         return uniName;
@@ -605,6 +610,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
                 }
             }
         }
+
         return ".notdef";
     }
 

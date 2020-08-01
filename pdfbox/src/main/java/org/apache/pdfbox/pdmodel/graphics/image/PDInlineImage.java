@@ -23,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -73,7 +74,7 @@ public final class PDInlineImage implements PDImage
 
         DecodeResult decodeResult = null;
         List<String> filters = getFilters();
-        if (filters == null || filters.isEmpty())
+        if (filters.isEmpty())
         {
             this.decodedData = data;
         }
@@ -100,7 +101,7 @@ public final class PDInlineImage implements PDImage
     }
 
     @Override
-    public COSBase getCOSObject()
+    public COSDictionary getCOSObject()
     {
         return parameters;
     }
@@ -236,14 +237,13 @@ public final class PDInlineImage implements PDImage
     }
 
     /**
-     * Returns a list of filters applied to this stream, or null if there are none.
+     * Returns A list of filters applied to this stream.
      *
-     * @return a list of filters applied to this stream
+     * @return A (possibly empty) list of filters applied to this stream, never null.
      */
-    // TODO return an empty list if there are none?
     public List<String> getFilters()
     {
-        List<String> names = null;
+        List<String> names = Collections.emptyList();
         COSBase filters = parameters.getDictionaryObject(COSName.F, COSName.FILTER);
         if (filters instanceof COSName)
         {
@@ -311,22 +311,20 @@ public final class PDInlineImage implements PDImage
         List<String> filters = getFilters();
         ByteArrayInputStream in = new ByteArrayInputStream(rawData);
         ByteArrayOutputStream out = new ByteArrayOutputStream(rawData.length);
-        for (int i = 0; filters != null && i < filters.size(); i++)
+        for (int i = 0; i < filters.size(); i++)
         {
-            // TODO handling of abbreviated names belongs here, rather than in other classes
-            out.reset();
             if (stopFilters.contains(filters.get(i)))
             {
                 break;
             }
-            else
-            {
-                Filter filter = FilterFactory.INSTANCE.getFilter(filters.get(i));
-                filter.decode(in, out, parameters, i);
-                in = new ByteArrayInputStream(out.toByteArray());
-            }
+
+            // TODO handling of abbreviated names belongs here, rather than in other classes
+            Filter filter = FilterFactory.INSTANCE.getFilter(filters.get(i));
+            out.reset();
+            filter.decode(in, out, parameters, i);
+            in = new ByteArrayInputStream(out.toByteArray());
         }
-        return new ByteArrayInputStream(out.toByteArray());
+        return in;
     }
 
     @Override
@@ -373,7 +371,23 @@ public final class PDInlineImage implements PDImage
     @Override
     public String getSuffix()
     {
-        // TODO implement me
-        return null;
+        List<String> filters = getFilters();
+
+        if (filters == null || filters.isEmpty())
+        {
+            return "png";
+        }
+        if (filters.contains(COSName.DCT_DECODE.getName()) || 
+            filters.contains(COSName.DCT_DECODE_ABBREVIATION.getName()))
+        {
+            return "jpg";
+        }
+        if (filters.contains(COSName.CCITTFAX_DECODE.getName()) ||
+            filters.contains(COSName.CCITTFAX_DECODE_ABBREVIATION.getName()))
+        {
+            return "tiff";
+        }
+        // JPX and JBIG2 don't exist for inline images
+        return "png";        
     }
 }

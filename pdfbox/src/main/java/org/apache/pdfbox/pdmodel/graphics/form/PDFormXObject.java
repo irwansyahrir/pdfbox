@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
@@ -30,6 +31,7 @@ import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.ResourceCache;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.util.Matrix;
 
@@ -153,10 +155,17 @@ public class PDFormXObject extends PDXObject implements PDContentStream
     @Override
     public PDResources getResources()
     {
-        COSDictionary resources = (COSDictionary) getCOSObject().getDictionaryObject(COSName.RESOURCES);
+        COSDictionary resources = getCOSObject().getCOSDictionary(COSName.RESOURCES);
         if (resources != null)
         {
             return new PDResources(resources, cache);
+        }
+        if (getCOSObject().containsKey(COSName.RESOURCES))
+        {
+            // PDFBOX-4372 if the resource key exists but has nothing, return empty resources,
+            // to avoid a self-reference (xobject form Fm0 contains "/Fm0 Do")
+            // See also the mention of PDFBOX-1359 in PDFStreamEngine
+            return new PDResources();
         }
         return null;
     }
@@ -232,14 +241,15 @@ public class PDFormXObject extends PDXObject implements PDContentStream
     }
 
     /**
-     * This will get the key of this XObjectForm in the structural parent tree.
-     * Required if the form XObject contains marked-content sequences that are
-     * structural content items.
-     * @return the integer key of the XObjectForm's entry in the structural parent tree
+     * This will get the key of this XObjectForm in the structural parent tree. Required if the form
+     * XObject contains marked-content sequences that are structural content items.
+     *
+     * @return the integer key of the XObjectForm's entry in the structural parent tree or -1 if
+     * there isn't any.
      */
     public int getStructParents()
     {
-        return getCOSObject().getInt(COSName.STRUCT_PARENTS, 0);
+        return getCOSObject().getInt(COSName.STRUCT_PARENTS);
     }
 
     /**
@@ -249,5 +259,31 @@ public class PDFormXObject extends PDXObject implements PDContentStream
     public void setStructParents(int structParent)
     {
         getCOSObject().setInt(COSName.STRUCT_PARENTS, structParent);
+    }
+
+    /**
+     * This will get the optional content group or optional content membership dictionary.
+     *
+     * @return The optional content group or optional content membership dictionary or null if there
+     * is none.
+     */
+    public PDPropertyList getOptionalContent()
+    {
+        COSBase base = getCOSObject().getDictionaryObject(COSName.OC);
+        if (base instanceof COSDictionary)
+        {
+            return PDPropertyList.create((COSDictionary) base);
+        }
+        return null;
+    }
+
+    /**
+     * Sets the optional content group or optional content membership dictionary.
+     *
+     * @param oc The optional content group or optional content membership dictionary.
+     */
+    public void setOptionalContent(PDPropertyList oc)
+    {
+        getCOSObject().setItem(COSName.OC, oc);
     }
 }

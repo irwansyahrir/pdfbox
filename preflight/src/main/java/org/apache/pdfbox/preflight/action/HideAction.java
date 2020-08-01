@@ -25,13 +25,13 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_ACTION_HIDE_H
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_ACTION_INVALID_TYPE;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_ACTION_MISING_KEY;
 
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 
 /**
  * ActionManager for the Hide action. The Hide action isn't specifically prohibited by PDF/A-1, but should have been. So
@@ -58,12 +58,12 @@ public class HideAction extends AbstractActionManager
     /*
      * (non-Javadoc)
      * 
-     * @see net.awl.edoc.pdfa.validation.actions.AbstractActionManager#valid(java.util .List)
+     * @see org.apache.pdfbox.preflight.action.AbstractActionManager#valid(java.util .List)
      */
     @Override
     protected boolean innerValid()
     {
-        COSBase t = this.actionDictionnary.getItem(COSName.T);
+        COSBase t = this.actionDictionary.getDictionaryObject(COSName.T);
         // ---- T entry is mandatory
         if (t == null)
         {
@@ -72,9 +72,8 @@ public class HideAction extends AbstractActionManager
             return false;
         }
 
-        COSDocument cosDocument = this.context.getDocument().getDocument();
-        if (!(COSUtils.isDictionary(t, cosDocument) || COSUtils.isArray(t, cosDocument) || COSUtils.isString(t,
-                cosDocument)))
+        if (!(t instanceof COSDictionary || t instanceof COSArray || t instanceof COSString
+                || t instanceof COSName))
         {
             context.addValidationError(new ValidationError(ERROR_ACTION_INVALID_TYPE, "T entry type is invalid"));
             return false;
@@ -92,7 +91,7 @@ public class HideAction extends AbstractActionManager
          * representation of the document or is not documented in the PDF Reference is not permitted. This includes the
          * /Hide action which isn't specifically prohibited by PDF/A-1, but should have been.
          */
-        boolean h = this.actionDictionnary.getBoolean(COSName.H, true);
+        boolean h = this.actionDictionary.getBoolean(COSName.H, true);
         if (h)
         {
             context.addValidationError(new ValidationError(ERROR_ACTION_HIDE_H_INVALID, "H entry is \"true\""));

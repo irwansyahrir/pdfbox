@@ -17,6 +17,7 @@
 package org.apache.pdfbox.tools;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.fdf.FDFDocument;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
@@ -84,8 +85,8 @@ public class ImportXFDF
         else
         {
             ImportFDF importer = new ImportFDF();
-            try (PDDocument pdf = PDDocument.load( new File(args[0]) );
-                    FDFDocument fdf = FDFDocument.loadXFDF( args[1] ))
+            try (PDDocument pdf = Loader.loadPDF(new File(args[0]));
+                    FDFDocument fdf = Loader.loadXFDF(args[1]))
             {
                 importer.importFDF( pdf, fdf );
                 pdf.save( args[2] );

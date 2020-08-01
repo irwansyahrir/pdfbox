@@ -20,6 +20,8 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 
+import org.apache.pdfbox.Loader;
+
 import junit.framework.TestCase;
 
 /**
@@ -33,7 +35,7 @@ public class TestPDDocumentInformation extends TestCase
     public void testMetadataExtraction() throws Exception
     {
         // This document has been selected for this test as it contains custom metadata.
-        try (PDDocument doc = PDDocument.load( new File("src/test/resources/input/hello3.pdf")))
+        try (PDDocument doc = Loader.loadPDF(new File("src/test/resources/input/hello3.pdf")))
         {
            PDDocumentInformation info = doc.getDocumentInformation();
            
@@ -69,7 +71,8 @@ public class TestPDDocumentInformation extends TestCase
      */
     public void testPDFBox3068() throws Exception
     {
-        try (PDDocument doc = PDDocument.load(TestPDDocumentInformation.class.getResourceAsStream("PDFBOX-3068.pdf")))
+        try (PDDocument doc = Loader
+                .loadPDF(TestPDDocumentInformation.class.getResourceAsStream("PDFBOX-3068.pdf")))
         {
             PDDocumentInformation documentInformation = doc.getDocumentInformation();
             assertEquals("Title", documentInformation.getTitle());

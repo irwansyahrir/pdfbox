@@ -22,11 +22,12 @@ import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Stack;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -34,6 +35,8 @@ import org.apache.pdfbox.contentstream.operator.MissingOperandException;
 import org.apache.pdfbox.contentstream.operator.state.EmptyGraphicsStackException;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSString;
@@ -44,7 +47,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDFontFactory;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.PDLineDashPattern;
@@ -78,32 +81,21 @@ public abstract class PDFStreamEngine
     private Matrix textMatrix;
     private Matrix textLineMatrix;
 
-    private Stack<PDGraphicsState> graphicsStack = new Stack<>();
+    private Deque<PDGraphicsState> graphicsStack = new ArrayDeque<>();
 
     private PDResources resources;
     private PDPage currentPage;
     private boolean isProcessingPage;
     private Matrix initialMatrix;
 
+    // used to monitor potentially recursive operations.
+    private int level = 0;
+
     /**
      * Creates a new PDFStreamEngine.
      */
     protected PDFStreamEngine()
     {
-    }
-
-    /**
-     * Register a custom operator processor with the engine.
-     * 
-     * @param operator The operator as a string.
-     * @param op Processor instance.
-     * @deprecated Use {@link #addOperator(OperatorProcessor)} instead
-     */
-    @Deprecated
-    public void registerOperatorProcessor(String operator, OperatorProcessor op)
-    {
-        op.setContext(this);
-        operators.put(operator, op);
     }
 
     /**
@@ -210,7 +202,7 @@ public abstract class PDFStreamEngine
         }
 
         PDResources parent = pushResources(group);
-        Stack<PDGraphicsState> savedStack = saveGraphicsStack();
+        Deque<PDGraphicsState> savedStack = saveGraphicsStack();
         
         Matrix parentMatrix = initialMatrix;
 
@@ -256,7 +248,7 @@ public abstract class PDFStreamEngine
         }
 
         PDResources parent = pushResources(charProc);
-        Stack<PDGraphicsState> savedStack = saveGraphicsStack();
+        Deque<PDGraphicsState> savedStack = saveGraphicsStack();
 
         // replace the CTM with the TRM
         getGraphicsState().setCurrentTransformationMatrix(textRenderingMatrix);
@@ -293,14 +285,15 @@ public abstract class PDFStreamEngine
             throws IOException
     {
         PDResources parent = pushResources(appearance);
-        Stack<PDGraphicsState> savedStack = saveGraphicsStack();
+        Deque<PDGraphicsState> savedStack = saveGraphicsStack();
 
         PDRectangle bbox = appearance.getBBox();
         PDRectangle rect = annotation.getRectangle();
         Matrix matrix = appearance.getMatrix();
 
         // zero-sized rectangles are not valid
-        if (rect != null && rect.getWidth() > 0 && rect.getHeight() > 0 && bbox != null)
+        if (rect != null && rect.getWidth() > 0 && rect.getHeight() > 0 &&
+            bbox != null && bbox.getWidth() > 0 && bbox.getHeight() > 0)
         {
             // transformed appearance box  fixme: may be an arbitrary shape
             Rectangle2D transformedBox = bbox.transform(matrix).getBounds2D();
@@ -308,10 +301,9 @@ public abstract class PDFStreamEngine
             // compute a matrix which scales and translates the transformed appearance box to align
             // with the edges of the annotation's rectangle
             Matrix a = Matrix.getTranslateInstance(rect.getLowerLeftX(), rect.getLowerLeftY());
-            a.concatenate(Matrix.getScaleInstance((float)(rect.getWidth() / transformedBox.getWidth()),
-                    (float)(rect.getHeight() / transformedBox.getHeight())));
-            a.concatenate(Matrix.getTranslateInstance((float) -transformedBox.getX(),
-                    (float) -transformedBox.getY()));
+            a.scale((float)(rect.getWidth() / transformedBox.getWidth()),
+                    (float)(rect.getHeight() / transformedBox.getHeight()));
+            a.translate((float) -transformedBox.getX(), (float) -transformedBox.getY());
 
             // Matrix shall be concatenated with A to form a matrix AA that maps from the appearance's
             // coordinate system to the annotation's rectangle in default user space
@@ -370,7 +362,7 @@ public abstract class PDFStreamEngine
         initialMatrix = Matrix.concatenate(initialMatrix, patternMatrix);
 
         // save the original graphics state
-        Stack<PDGraphicsState> savedStack = saveGraphicsStack();
+        Deque<PDGraphicsState> savedStack = saveGraphicsStack();
 
         // save a clean state (new clipping path, line path, etc.)
         Rectangle2D bbox = tilingPattern.getBBox().transform(patternMatrix).getBounds2D();
@@ -394,8 +386,13 @@ public abstract class PDFStreamEngine
         // clip to bounding box
         clipToRect(tilingPattern.getBBox());
 
+        // save text matrices (pattern stream may contain BT/ET, see PDFBOX-4896)
+        Matrix textMatrixSave = textMatrix;
+        Matrix textLineMatrixSave = textLineMatrix;
         processStreamOperators(tilingPattern);
-
+        textMatrix = textMatrixSave;
+        textLineMatrix = textLineMatrixSave;
+        
         initialMatrix = parentMatrix;
         restoreGraphicsStack(savedStack);
         popResources(parent);
@@ -456,7 +453,7 @@ public abstract class PDFStreamEngine
     private void processStream(PDContentStream contentStream) throws IOException
     {
         PDResources parent = pushResources(contentStream);
-        Stack<PDGraphicsState> savedStack = saveGraphicsStack();
+        Deque<PDGraphicsState> savedStack = saveGraphicsStack();
         Matrix parentMatrix = initialMatrix;
 
         // transform the CTM using the stream's matrix
@@ -485,24 +482,27 @@ public abstract class PDFStreamEngine
     private void processStreamOperators(PDContentStream contentStream) throws IOException
     {
         List<COSBase> arguments = new ArrayList<>();
-        PDFStreamParser parser = new PDFStreamParser(contentStream.getContents());
-        Object token = parser.parseNextToken();
-        while (token != null)
+        try (InputStream is = contentStream.getContents())
         {
-            if (token instanceof COSObject)
+            PDFStreamParser parser = new PDFStreamParser(is);
+            Object token = parser.parseNextToken();
+            while (token != null)
             {
-                arguments.add(((COSObject) token).getObject());
+                if (token instanceof COSObject)
+                {
+                    arguments.add(((COSObject) token).getObject());
+                }
+                else if (token instanceof Operator)
+                {
+                    processOperator((Operator) token, arguments);
+                    arguments = new ArrayList<>();
+                }
+                else
+                {
+                    arguments.add((COSBase) token);
+                }
+                token = parser.parseNextToken();
             }
-            else if (token instanceof Operator)
-            {
-                processOperator((Operator) token, arguments);
-                arguments = new ArrayList<>();
-            }
-            else
-            {
-                arguments.add((COSBase) token);
-            }
-            token = parser.parseNextToken();
         }
     }
 
@@ -615,7 +615,8 @@ public abstract class PDFStreamEngine
                 float tj = ((COSNumber)obj).floatValue();
 
                 // calculate the combined displacements
-                float tx, ty;
+                float tx;
+                float ty;
                 if (isVertical)
                 {
                     tx = 0;
@@ -647,10 +648,10 @@ public abstract class PDFStreamEngine
      * @param tx x-translation
      * @param ty y-translation
      */
-    protected void applyTextAdjustment(float tx, float ty) throws IOException
+    protected void applyTextAdjustment(float tx, float ty)
     {
         // update the text matrix
-        textMatrix.concatenate(Matrix.getTranslateInstance(tx, ty));
+        textMatrix.translate(tx, ty);
     }
 
     /**
@@ -670,7 +671,7 @@ public abstract class PDFStreamEngine
         if (font == null)
         {
             LOG.warn("No current font, will use default");
-            font = PDFontFactory.createDefaultFont();
+            font = PDType1Font.HELVETICA;
         }
 
         float fontSize = textState.getFontSize();
@@ -691,7 +692,6 @@ public abstract class PDFStreamEngine
             int before = in.available();
             int code = font.readCode(in);
             int codeLength = before - in.available();
-            String unicode = font.toUnicode(code);
 
             // Word spacing shall be applied to every occurrence of the single-byte character code
             // 32 in a string when using a simple font or a composite font that defines code 32 as
@@ -721,16 +721,11 @@ public abstract class PDFStreamEngine
             Vector w = font.getDisplacement(code);
 
             // process the decoded glyph
-            saveGraphicsState();
-            Matrix textMatrixOld = textMatrix;
-            Matrix textLineMatrixOld = textLineMatrix;
-            showGlyph(textRenderingMatrix, font, code, unicode, w);
-            textMatrix = textMatrixOld;
-            textLineMatrix = textLineMatrixOld;
-            restoreGraphicsState();
+            showGlyph(textRenderingMatrix, font, code, w);
 
             // calculate the combined displacements
-            float tx, ty;
+            float tx;
+            float ty;
             if (font.isVertical())
             {
                 tx = 0;
@@ -743,70 +738,86 @@ public abstract class PDFStreamEngine
             }
 
             // update the text matrix
-            textMatrix.concatenate(Matrix.getTranslateInstance(tx, ty));
+            textMatrix.translate(tx, ty);
         }
     }
 
     /**
-     * Called when a glyph is to be processed.This method is intended for overriding in subclasses,
+     * Called when a glyph is to be processed. This method is intended for overriding in subclasses,
      * the default implementation does nothing.
      *
      * @param textRenderingMatrix the current text rendering matrix, T<sub>rm</sub>
      * @param font the current font
      * @param code internal PDF character code for the glyph
-     * @param unicode the Unicode text for this glyph, or null if the PDF does provide it
      * @param displacement the displacement (i.e. advance) of the glyph in text space
      * @throws IOException if the glyph cannot be processed
      */
-    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                             Vector displacement) throws IOException
+    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement)
+            throws IOException
     {
         if (font instanceof PDType3Font)
         {
-            showType3Glyph(textRenderingMatrix, (PDType3Font)font, code, unicode, displacement);
+            showType3Glyph(textRenderingMatrix, (PDType3Font) font, code, displacement);
         }
         else
         {
-            showFontGlyph(textRenderingMatrix, font, code, unicode, displacement);
+            showFontGlyph(textRenderingMatrix, font, code, displacement);
         }
     }
 
     /**
-     * Called when a glyph is to be processed.This method is intended for overriding in subclasses,
+     * Called when a glyph is to be processed. This method is intended for overriding in subclasses,
      * the default implementation does nothing.
      *
      * @param textRenderingMatrix the current text rendering matrix, T<sub>rm</sub>
      * @param font the current font
      * @param code internal PDF character code for the glyph
-     * @param unicode the Unicode text for this glyph, or null if the PDF does provide it
      * @param displacement the displacement (i.e. advance) of the glyph in text space
      * @throws IOException if the glyph cannot be processed
      */
-    protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                                 Vector displacement) throws IOException
+    protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font,
+            int code, Vector displacement) throws IOException
     {
         // overridden in subclasses
     }
 
     /**
-     * Called when a glyph is to be processed.This method is intended for overriding in subclasses,
+     * Called when a glyph is to be processed. This method is intended for overriding in subclasses,
      * the default implementation does nothing.
      *
      * @param textRenderingMatrix the current text rendering matrix, T<sub>rm</sub>
      * @param font the current font
      * @param code internal PDF character code for the glyph
-     * @param unicode the Unicode text for this glyph, or null if the PDF does provide it
      * @param displacement the displacement (i.e. advance) of the glyph in text space
      * @throws IOException if the glyph cannot be processed
      */
     protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
-                                  String unicode, Vector displacement) throws IOException
+            Vector displacement) throws IOException
     {
         PDType3CharProc charProc = font.getCharProc(code);
         if (charProc != null)
         {
             processType3Stream(charProc, textRenderingMatrix);
         }
+    }
+
+    /**
+     * Called when a marked content group begins
+     *
+     * @param tag indicates the role or significance of the sequence
+     * @param properties optional properties
+     */
+    public void beginMarkedContentSequence(COSName tag, COSDictionary properties)
+    {
+        // overridden in subclasses
+    }
+
+    /**
+     * Called when a a marked content group ends
+     */
+    public void endMarkedContentSequence()
+    {
+        // overridden in subclasses
     }
 
     /**
@@ -911,11 +922,13 @@ public abstract class PDFStreamEngine
 
     /**
      * Saves the entire graphics stack.
+     * 
+     * @return the saved graphics state stack.
      */
-    protected final Stack<PDGraphicsState> saveGraphicsStack()
+    protected final Deque<PDGraphicsState> saveGraphicsStack()
     {
-        Stack<PDGraphicsState> savedStack = graphicsStack;
-        graphicsStack = new Stack<>();
+        Deque<PDGraphicsState> savedStack = graphicsStack;
+        graphicsStack = new ArrayDeque<>();
         graphicsStack.add(savedStack.peek().clone());
         return savedStack;
     }
@@ -923,7 +936,7 @@ public abstract class PDFStreamEngine
     /**
      * Restores the entire graphics stack.
      */
-    protected final void restoreGraphicsStack(Stack<PDGraphicsState> snapshot)
+    protected final void restoreGraphicsStack(Deque<PDGraphicsState> snapshot)
     {
         graphicsStack = snapshot;
     }
@@ -1036,5 +1049,38 @@ public abstract class PDFStreamEngine
         float x = ctm.getScaleX() + ctm.getShearX();
         float y = ctm.getScaleY() + ctm.getShearY();
         return width * (float)Math.sqrt((x * x + y * y) * 0.5);
+    }
+
+    /**
+     * Get the current level. This can be used to decide whether a recursion has done too deep and
+     * an operation should be skipped to avoid a stack overflow.
+     *
+     * @return the current level.
+     */
+    public int getLevel()
+    {
+        return level;
+    }
+
+    /**
+     * Increase the level. Call this before running a potentially recursive operation.
+     */
+    public void increaseLevel()
+    {
+        ++level;
+    }
+
+    /**
+     * Decrease the level. Call this after running a potentially recursive operation. A log message
+     * is shown if the level is below 0. This can happen if the level is not decreased after an
+     * operation is done, e.g. by using a "finally" block.
+     */
+    public void decreaseLevel()
+    {
+        --level;
+        if (level < 0)
+        {
+            LOG.error("level is " + level);
+        }
     }
 }

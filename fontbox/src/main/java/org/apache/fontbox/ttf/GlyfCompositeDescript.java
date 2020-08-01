@@ -57,7 +57,7 @@ public class GlyfCompositeDescript extends GlyfDescript
      * @param glyphTable the Glyphtable containing all glyphs
      * @throws IOException is thrown if something went wrong
      */
-    public GlyfCompositeDescript(TTFDataStream bais, GlyphTable glyphTable) throws IOException
+    GlyfCompositeDescript(TTFDataStream bais, GlyphTable glyphTable) throws IOException
     {
         super((short) -1, bais);
 
@@ -212,7 +212,7 @@ public class GlyfCompositeDescript extends GlyfDescript
             GlyphDescription gd = descriptions.get(c.getGlyphIndex());
             if (gd == null)
             {
-                LOG.error("getGlypDescription(" + c.getGlyphIndex() + ") is null, returning 0");
+                LOG.error("GlyphDescription for index " + c.getGlyphIndex() + " is null, returning 0");
                 pointCount = 0;
             }
             else

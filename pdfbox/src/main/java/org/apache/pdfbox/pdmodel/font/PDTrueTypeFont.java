@@ -64,14 +64,13 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
     private static final Map<String, Integer> INVERTED_MACOS_ROMAN = new HashMap<>(250);
     static
     {
-        Map<Integer, String> codeToName = MacOSRomanEncoding.INSTANCE.getCodeToNameMap();
-        for (Map.Entry<Integer, String> entry : codeToName.entrySet())
+        MacOSRomanEncoding.INSTANCE.getCodeToNameMap().forEach((key, value) ->
         {
-            if (!INVERTED_MACOS_ROMAN.containsKey(entry.getValue()))
+            if (!INVERTED_MACOS_ROMAN.containsKey(value))
             {
-                INVERTED_MACOS_ROMAN.put(entry.getValue(), entry.getKey());
+                INVERTED_MACOS_ROMAN.put(value, key);
             }
-        }
+        });
     }
 
     private final TrueTypeFont ttf;
@@ -107,9 +106,8 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
                     TTFParser ttfParser = new TTFParser(true);
                     ttfFont = ttfParser.parse(ff2Stream.createInputStream());
                 }
-                catch (NullPointerException | IOException e)
+                catch (IOException e)
                 {
-                    // NPE due to TTF parser being buggy
                     LOG.warn("Could not read embedded TTF for font " + getBaseFont(), e);
                     fontIsDamaged = true;
                 }
@@ -616,6 +614,12 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
                 gid = cmapMacRoman.getGlyphId(code);
             }
 
+            // PDFBOX-4755 / PDF.js #5501
+            if (gid == 0 && cmapWinUnicode != null)
+            {
+                gid = cmapWinUnicode.getGlyphId(code);
+            }
+
             // PDFBOX-3965: fallback for font has that the symbol flag but isn't
             if (gid == 0 && cmapWinUnicode != null && encoding != null)
             {
@@ -668,6 +672,12 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
                         && CmapTable.ENCODING_MAC_ROMAN == cmap.getPlatformEncodingId())
                 {
                     cmapMacRoman = cmap;
+                }
+                else if (CmapTable.PLATFORM_UNICODE == cmap.getPlatformId()
+                        && CmapTable.ENCODING_UNICODE_1_0 == cmap.getPlatformEncodingId())
+                {
+                    // PDFBOX-4755 / PDF.js #5501
+                    cmapWinUnicode = cmap;
                 }
             }
         }

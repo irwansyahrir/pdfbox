@@ -69,7 +69,7 @@ class AppearanceGeneratorHelper
      *
      * Regardless of other settings in an existing appearance stream Adobe will always use this value.
      */
-    private static final int[] HIGHLIGHT_COLOR = {153,193,215};
+    private static final float[] HIGHLIGHT_COLOR = {153/255f, 193/255f, 215/255f};
  
     /**
      * The scaling factor for font units to PDF units
@@ -79,7 +79,13 @@ class AppearanceGeneratorHelper
     /**
      * The default font size used for multiline text
      */
-    private static final float DEFAULT_FONT_SIZE = 12;    
+    private static final float DEFAULT_FONT_SIZE = 12;
+
+    /**
+     * The minimum/maximum font sizes used for multiline text auto sizing
+     */
+    private static final float MINIMUM_FONT_SIZE = 4;
+    private static final float MAXIMUM_FONT_SIZE = 300;
     
     /**
      * The default padding applied by Acrobat to the fields bbox.
@@ -97,14 +103,24 @@ class AppearanceGeneratorHelper
         this.field = field;
         validateAndEnsureAcroFormResources();
         
-        this.defaultAppearance = field.getDefaultAppearanceString();
+        try
+        {
+            this.defaultAppearance = field.getDefaultAppearanceString();
+        }
+        catch (IOException ex)
+        {
+            throw new IOException("Could not process default appearance string '" +
+                                   field.getDefaultAppearance() + "' for field '" +
+                                   field.getFullyQualifiedName() + "'", ex);
+        }
     }
     
     /*
      * Adobe Reader/Acrobat are adding resources which are at the field/widget level
      * to the AcroForm level. 
      */
-    private void validateAndEnsureAcroFormResources() {
+    private void validateAndEnsureAcroFormResources()
+    {
         // add font resources which might be available at the field 
         // level but are not at the AcroForm level to the AcroForm
         // to match Adobe Reader/Acrobat behavior        
@@ -198,27 +214,13 @@ class AppearanceGeneratorHelper
                 // TODO support appearances other than "normal"
                 
                 PDAppearanceStream appearanceStream;
-                if (appearance != null && appearance.isStream())
+                if (isValidAppearanceStream(appearance))
                 {
                     appearanceStream = appearance.getAppearanceStream();
                 }
                 else
                 {
-                    appearanceStream = new PDAppearanceStream(field.getAcroForm().getDocument());
-                    
-                    // Calculate the entries for the bounding box and the transformation matrix
-                    // settings for the appearance stream
-                    int rotation = resolveRotation(widget);
-                    Matrix matrix = Matrix.getRotateInstance(Math.toRadians(rotation), 0, 0);
-                    Point2D.Float point2D = matrix.transformPoint(rect.getWidth(), rect.getHeight());
-                    
-                    PDRectangle bbox = new PDRectangle(Math.abs((float) point2D.getX()), Math.abs((float) point2D.getY()));
-                    appearanceStream.setBBox(bbox);
-                    
-                    appearanceStream.setMatrix(calculateMatrix(bbox, rotation));
-                    appearanceStream.setFormType(1);
-
-                    appearanceStream.setResources(new PDResources());
+                    appearanceStream = prepareNormalAppearanceStream(widget);
 
                     appearanceDict.setNormalAppearance(appearanceStream);
                     // TODO support appearances other than "normal"
@@ -241,6 +243,48 @@ class AppearanceGeneratorHelper
             // restore the field level appearance
             defaultAppearance =  acroFormAppearance;
         }
+    }
+
+    private static boolean isValidAppearanceStream(PDAppearanceEntry appearance)
+    {
+        if (appearance == null)
+        {
+            return false;
+        }
+        if (!appearance.isStream())
+        {
+            return false;
+        }
+        PDRectangle bbox = appearance.getAppearanceStream().getBBox();
+        if (bbox == null)
+        {
+            return false;
+        }
+        return Math.abs(bbox.getWidth()) > 0 && Math.abs(bbox.getHeight()) > 0;
+    }
+
+    private PDAppearanceStream prepareNormalAppearanceStream(PDAnnotationWidget widget)
+    {
+        PDAppearanceStream appearanceStream = new PDAppearanceStream(field.getAcroForm().getDocument());
+
+        // Calculate the entries for the bounding box and the transformation matrix
+        // settings for the appearance stream
+        int rotation = resolveRotation(widget);
+        PDRectangle rect = widget.getRectangle();
+        Matrix matrix = Matrix.getRotateInstance(Math.toRadians(rotation), 0, 0);
+        Point2D.Float point2D = matrix.transformPoint(rect.getWidth(), rect.getHeight());
+
+        PDRectangle bbox = new PDRectangle(Math.abs((float) point2D.getX()), Math.abs((float) point2D.getY()));
+        appearanceStream.setBBox(bbox);
+
+        AffineTransform at = calculateMatrix(bbox, rotation);
+        if (!at.isIdentity())
+        {
+            appearanceStream.setMatrix(at);
+        }
+        appearanceStream.setFormType(1);
+        appearanceStream.setResources(new PDResources());
+        return appearanceStream;
     }
     
     private PDDefaultAppearanceString getWidgetDefaultAppearanceString(PDAnnotationWidget widget) throws IOException
@@ -328,8 +372,7 @@ class AppearanceGeneratorHelper
     private List<Object> tokenize(PDAppearanceStream appearanceStream) throws IOException
     {
         PDFStreamParser parser = new PDFStreamParser(appearanceStream.getContents());
-        parser.parse();
-        return parser.getTokens();
+        return parser.parse();
     }
 
     /**
@@ -415,6 +458,18 @@ class AppearanceGeneratorHelper
             {
                 throw new IllegalArgumentException("font is null, check whether /DA entry is incomplete or incorrect");
             }
+            if (font.getName().contains("+"))
+            {
+                LOG.warn("Font '" + defaultAppearance.getFontName().getName() +
+                         "' of field '" + field.getFullyQualifiedName() + 
+                         "' contains subsetted font '" + font.getName() + "'");
+                LOG.warn("This may bring trouble with PDField.setValue(), PDAcroForm.flatten() or " +
+                         "PDAcroForm.refreshAppearances()");
+                LOG.warn("You should replace this font with a non-subsetted font:");
+                LOG.warn("PDFont font = PDType0Font.load(doc, new FileInputStream(fontfile), false);");
+                LOG.warn("acroForm.getDefaultResources().put(COSName.getPDFName(\"" +
+                         defaultAppearance.getFontName().getName() + "\", font);");
+            }
             // calculate the fontSize (because 0 = autosize)
             float fontSize = defaultAppearance.getFontSize();
             
@@ -427,15 +482,15 @@ class AppearanceGeneratorHelper
             // options
             if (field instanceof PDListBox)
             {
-                insertGeneratedSelectionHighlight(contents, appearanceStream, font, fontSize);
+                insertGeneratedListboxSelectionHighlight(contents, appearanceStream, font, fontSize);
             }
             
             // start the text output
             contents.beginText();
-            
-            // write the /DA string
+
+            // write font and color from the /DA string, with the calculated font size
             defaultAppearance.writeTo(contents, fontSize);
-            
+
             // calculate the y-position of the baseline
             float y;
             
@@ -610,7 +665,7 @@ class AppearanceGeneratorHelper
         }
     }
     
-    private void insertGeneratedSelectionHighlight(PDAppearanceContentStream contents, PDAppearanceStream appearanceStream,
+    private void insertGeneratedListboxSelectionHighlight(PDAppearanceContentStream contents, PDAppearanceStream appearanceStream,
             PDFont font, float fontSize) throws IOException
     {
         List<Integer> indexEntries = ((PDListBox) field).getSelectedOptionsIndex();
@@ -647,14 +702,14 @@ class AppearanceGeneratorHelper
                     highlightBoxHeight);
             contents.fill();
         }
-        contents.setNonStrokingColor(0);
+        contents.setNonStrokingColor(0f);
     }
     
     
     private void insertGeneratedListboxAppearance(PDAppearanceContentStream contents, PDAppearanceStream appearanceStream,
             PDRectangle contentRect, PDFont font, float fontSize) throws IOException
     {
-        contents.setNonStrokingColor(0);
+        contents.setNonStrokingColor(0f);
         
         int q = field.getQ();
 
@@ -699,7 +754,7 @@ class AppearanceGeneratorHelper
             contents.newLineAtOffset(contentRect.getLowerLeftX(), yTextPos);
             contents.showText(options.get(i));
 
-            if (i - topIndex != (numOptions - 1))
+            if (i != (numOptions - 1))
             {
                 contents.endText();
             }
@@ -735,6 +790,34 @@ class AppearanceGeneratorHelper
         {
             if (isMultiLine())
             {
+                PlainText textContent = new PlainText(value);
+                if (textContent.getParagraphs() != null)
+                {
+                    float width = contentRect.getWidth() - contentRect.getLowerLeftX();
+                    float fs = MINIMUM_FONT_SIZE;
+                    while (fs <= DEFAULT_FONT_SIZE)
+                    {
+                        // determine the number of lines needed for this font and contentRect
+                        int numLines = 0;
+                        for (PlainText.Paragraph paragraph : textContent.getParagraphs())
+                        {
+                            numLines += paragraph.getLines(font, fs, width).size();
+                        }
+                        // calculate the height required for this font size
+                        float fontScaleY = fs / FONTSCALE;
+                        float leading = font.getBoundingBox().getHeight() * fontScaleY;
+                        float height = leading * numLines;
+
+                        // if this font size didn't fit, use the prior size that did fit
+                        if (height > contentRect.getHeight())
+                        {
+                            return Math.max(fs - 1, MINIMUM_FONT_SIZE);
+                        }
+                        fs++;
+                    }
+                    return Math.min(fs, DEFAULT_FONT_SIZE);
+                }
+                
                 // Acrobat defaults to 12 for multiline text with size 0
                 return DEFAULT_FONT_SIZE;
             }

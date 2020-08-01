@@ -32,6 +32,7 @@ import org.apache.commons.logging.LogFactory;
 
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSBoolean;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
@@ -42,7 +43,6 @@ import org.apache.pdfbox.preflight.exception.ValidationException;
 import org.apache.pdfbox.preflight.graphic.ColorSpaceHelper;
 import org.apache.pdfbox.preflight.graphic.ColorSpaceHelperFactory;
 import org.apache.pdfbox.preflight.graphic.ColorSpaceHelperFactory.ColorSpaceRestriction;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 import org.apache.pdfbox.preflight.utils.RenderingIntents;
 
 /**
@@ -86,9 +86,10 @@ public class XObjImageValidator extends AbstractXObjValidator
     /*
      * 6.2.4 if interpolates, value = false
      */
-    protected void checkInterpolate() throws ValidationException
+    protected void checkInterpolate()
     {
-        if (this.xobject.getItem("Interpolate") != null && this.xobject.getBoolean("Interpolate", true))
+        if (this.xobject.getItem(COSName.INTERPOLATE) != null
+                && this.xobject.getBoolean(COSName.INTERPOLATE, true))
         {
             context.addValidationError(new ValidationError(ERROR_GRAPHIC_UNEXPECTED_VALUE_FOR_KEY,
                     "Unexpected 'true' value for 'Interpolate' Key"));
@@ -98,16 +99,14 @@ public class XObjImageValidator extends AbstractXObjValidator
     /*
      * 6.2.4 Intent has specific values
      */
-    protected void checkIntent() throws ValidationException
+    protected void checkIntent()
     {
-        if (this.xobject.getItem("Intent") != null)
+        COSName renderingIntent = xobject.getCOSName(COSName.INTENT);
+        if (renderingIntent != null && !RenderingIntents.contains(renderingIntent))
         {
-            String s = this.xobject.getNameAsString("Intent");
-            if (!RenderingIntents.contains(s))
-            {
-                context.addValidationError(new ValidationError(ERROR_GRAPHIC_UNEXPECTED_VALUE_FOR_KEY,
-                        "Unexpected value '" + s + "' for Intent key in image"));
-            }
+            context.addValidationError(new ValidationError(ERROR_GRAPHIC_UNEXPECTED_VALUE_FOR_KEY,
+                    "Unexpected value '" + renderingIntent.getName()
+                            + "' for Intent key in image"));
         }
     }
 
@@ -118,7 +117,7 @@ public class XObjImageValidator extends AbstractXObjValidator
     protected void checkColorSpaceAndImageMask() throws ValidationException
     {
         COSBase csImg = this.xobject.getItem(COSName.COLORSPACE);
-        COSBase bitsPerComp = this.xobject.getItem("BitsPerComponent");
+        COSBase bitsPerComp = this.xobject.getDictionaryObject(COSName.BITS_PER_COMPONENT);
         COSBase mask = this.xobject.getItem(COSName.MASK);
 
         if (isImageMaskTrue())
@@ -129,8 +128,7 @@ public class XObjImageValidator extends AbstractXObjValidator
                         "ImageMask entry is true, ColorSpace and Mask are forbidden."));
             }
 
-            Integer bitsPerCompValue = COSUtils.getAsInteger(bitsPerComp, cosDocument);
-            if (bitsPerCompValue != null && bitsPerCompValue != 1)
+            if (bitsPerComp instanceof COSInteger && ((COSInteger) bitsPerComp).intValue() != 1)
             {
                 context.addValidationError(new ValidationError(ERROR_GRAPHIC_UNEXPECTED_VALUE_FOR_KEY,
                         "ImageMask entry is true, BitsPerComponent must be absent or 1."));
@@ -171,7 +169,7 @@ public class XObjImageValidator extends AbstractXObjValidator
     /*
      * (non-Javadoc)
      * 
-     * @see net.awl.edoc.pdfa.validation.graphics.AbstractXObjValidator#validate()
+     * @see org.apache.pdfbox.preflight.graphic.AbstractXObjValidator#validate()
      */
     @Override
     public void validate() throws ValidationException

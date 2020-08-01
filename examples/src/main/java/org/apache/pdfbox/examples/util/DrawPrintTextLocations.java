@@ -32,12 +32,12 @@ import java.io.Writer;
 import java.util.List;
 import javax.imageio.ImageIO;
 import org.apache.fontbox.util.BoundingBox;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
@@ -59,14 +59,12 @@ import org.apache.pdfbox.util.Vector;
  */
 public class DrawPrintTextLocations extends PDFTextStripper
 {
-    private BufferedImage image;
     private AffineTransform flipAT;
     private AffineTransform rotateAT;
     private AffineTransform transAT;
     private final String filename;
     static final int SCALE = 4;
     private Graphics2D g2d;
-    private final PDDocument document;
 
     /**
      * Instantiate a new PDFTextStripper object.
@@ -77,7 +75,7 @@ public class DrawPrintTextLocations extends PDFTextStripper
      */
     public DrawPrintTextLocations(PDDocument document, String filename) throws IOException
     {
-        this.document = document;
+        this.document = document; // must initialize here, base class initializes too late
         this.filename = filename;
     }
 
@@ -96,7 +94,7 @@ public class DrawPrintTextLocations extends PDFTextStripper
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 DrawPrintTextLocations stripper = new DrawPrintTextLocations(document, args[0]);
                 stripper.setSortByPosition(true);
@@ -110,9 +108,10 @@ public class DrawPrintTextLocations extends PDFTextStripper
     }
 
     @Override
-    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode, Vector displacement) throws IOException
+    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement)
+            throws IOException
     {
-        super.showGlyph(textRenderingMatrix, font, code, unicode, displacement);
+        super.showGlyph(textRenderingMatrix, font, code, displacement);
 
         // in cyan:
         // show actual glyph bounds. This must be done here and not in writeString(),
@@ -180,15 +179,6 @@ public class DrawPrintTextLocations extends PDFTextStripper
                 }
             }
         }
-        else if (font instanceof PDSimpleFont)
-        {
-            PDSimpleFont simpleFont = (PDSimpleFont) font;
-
-            // these two lines do not always work, e.g. for the TT fonts in file 032431.pdf
-            // which is why PDVectorFont is tried first.
-            String name = simpleFont.getEncoding().getName(code);
-            path = simpleFont.getPath(name);
-        }
         else
         {
             // shouldn't happen, please open issue in JIRA
@@ -204,8 +194,7 @@ public class DrawPrintTextLocations extends PDFTextStripper
     private void stripPage(int page) throws IOException
     {
         PDFRenderer pdfRenderer = new PDFRenderer(document);
-        image = pdfRenderer.renderImage(page, SCALE);
-        
+        BufferedImage image = pdfRenderer.renderImage(page, SCALE);
         PDPage pdPage = document.getPage(page);
         PDRectangle cropBox = pdPage.getCropBox();
 
@@ -255,6 +244,10 @@ public class DrawPrintTextLocations extends PDFTextStripper
         List<PDThreadBead> pageArticles = pdPage.getThreadBeads();
         for (PDThreadBead bead : pageArticles)
         {
+            if (bead == null)
+            {
+                continue;
+            }
             PDRectangle r = bead.getRectangle();
             Shape s = r.toGeneralPath().createTransformedShape(transAT);
             s = flipAT.createTransformedShape(s);

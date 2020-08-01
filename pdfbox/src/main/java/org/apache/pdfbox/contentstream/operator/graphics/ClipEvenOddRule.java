@@ -16,12 +16,13 @@
  */
 package org.apache.pdfbox.contentstream.operator.graphics;
 
-import java.awt.geom.GeneralPath;
+import java.awt.geom.Path2D;
 import java.io.IOException;
 import java.util.List;
 
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 
 /**
  * W* Set clipping path using even odd rule.
@@ -33,12 +34,12 @@ public final class ClipEvenOddRule extends GraphicsOperatorProcessor
     @Override
     public void process(Operator operator, List<COSBase> operands) throws IOException
     {
-        context.clip(GeneralPath.WIND_EVEN_ODD);
+        context.clip(Path2D.WIND_EVEN_ODD);
     }
 
     @Override
     public String getName()
     {
-        return "W*";
+        return OperatorName.CLIP_EVEN_ODD;
     }
 }

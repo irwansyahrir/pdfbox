@@ -23,6 +23,8 @@ import java.awt.color.ICC_Profile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 
 /**
@@ -30,8 +32,9 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
  *  A class that provide tooltip for K and k.
  */
 final class KToolTip extends ColorToolTip
-
 {
+    private static final Log LOG = LogFactory.getLog(KToolTip.class);
+
     /**
      * Constructor.
      * @param rowText String instance.
@@ -53,7 +56,7 @@ final class KToolTip extends ColorToolTip
             }
             catch (IOException e)
             {
-                e.printStackTrace();
+                LOG.error(e.getMessage(), e);
             }
         }
     }
@@ -77,9 +80,9 @@ final class KToolTip extends ColorToolTip
         // Instead, the "ISO Coated v2 300% (basICColor)" is used, which
         // is an open alternative to the "ISO Coated v2 300% (ECI)" profile.
 
-        String name = "org/apache/pdfbox/resources/icc/ISOcoated_v2_300_bas.icc";
+        String name = "/org/apache/pdfbox/resources/icc/ISOcoated_v2_300_bas.icc";
 
-        URL url = PDDeviceCMYK.class.getClassLoader().getResource(name);
+        URL url = PDDeviceCMYK.class.getResource(name);
         if (url == null)
         {
             throw new IOException("Error loading resource: " + name);

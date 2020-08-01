@@ -19,7 +19,9 @@ package org.apache.pdfbox.multipdf;
 import java.awt.geom.AffineTransform;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.logging.Log;
@@ -45,9 +47,9 @@ import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentPrope
 import org.apache.pdfbox.util.Matrix;
 
 /**
- * This class allows to import pages as Form XObjects into a PDF file and use them to create
- * layers (optional content groups).
- *
+ * This class allows to import pages as Form XObjects into a document and use them to create layers
+ * (optional content groups). It should used only on loaded documents, not on generated documents
+ * because these can contain unfinished parts, e.g. font subsetting information.
  */
 public class LayerUtility
 {
@@ -89,13 +91,13 @@ public class LayerUtility
         COSStream saveGraphicsStateStream = getDocument().getDocument().createCOSStream();
         try (OutputStream saveStream = saveGraphicsStateStream.createOutputStream())
         {
-            saveStream.write("q\n".getBytes("ISO-8859-1"));
+            saveStream.write("q\n".getBytes(StandardCharsets.ISO_8859_1));
         }
 
         COSStream restoreGraphicsStateStream = getDocument().getDocument().createCOSStream();
         try (OutputStream restoreStream = restoreGraphicsStateStream.createOutputStream())
         {
-            restoreStream.write("Q\n".getBytes("ISO-8859-1"));
+            restoreStream.write("Q\n".getBytes(StandardCharsets.ISO_8859_1));
         }
 
         //Wrap the existing page's content in a save/restore pair (q/Q) to have a controlled
@@ -144,8 +146,8 @@ public class LayerUtility
         return importPageAsForm(sourceDoc, page);
     }
 
-    private static final Set<String> PAGE_TO_FORM_FILTER = new java.util.HashSet<>(
-            Arrays.asList(new String[] {"Group", "LastModified", "Metadata"}));
+    private static final Set<String> PAGE_TO_FORM_FILTER =
+            new HashSet<>(Arrays.asList("Group", "LastModified", "Metadata"));
 
     /**
      * Imports a page from some PDF file as a Form XObject so it can be placed on another page

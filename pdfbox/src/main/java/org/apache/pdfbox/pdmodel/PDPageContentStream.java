@@ -21,25 +21,21 @@ import java.awt.geom.PathIterator;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
-import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
-import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
-import org.apache.pdfbox.pdmodel.graphics.color.PDICCBased;
-import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
-import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDInlineImage;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
-import org.apache.pdfbox.util.Charsets;
 import org.apache.pdfbox.util.Matrix;
 
 /**
@@ -80,6 +76,8 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
   
     private static final Log LOG = LogFactory.getLog(PDPageContentStream.class);
 
+    private boolean sourcePageHadContents = false;
+
     /**
      * Create a new PDPage content stream. This constructor overwrites all existing content streams
      * of this page.
@@ -91,6 +89,10 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
     public PDPageContentStream(PDDocument document, PDPage sourcePage) throws IOException
     {
         this(document, sourcePage, AppendMode.OVERWRITE, true, false);
+        if (sourcePageHadContents)
+        {
+            LOG.warn("You are overwriting an existing content, you should use the append mode");
+        }
     }
 
     /**
@@ -177,10 +179,11 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
                 PDStream prefixStream = new PDStream(document);
 
                 // save the pre-append graphics state
-                OutputStream prefixOut = prefixStream.createOutputStream();
-                prefixOut.write("q".getBytes(Charsets.US_ASCII));
-                prefixOut.write('\n');
-                prefixOut.close();
+                try (OutputStream prefixOut = prefixStream.createOutputStream())
+                {
+                    prefixOut.write("q".getBytes(StandardCharsets.US_ASCII));
+                    prefixOut.write('\n');
+                }
 
                 // insert the new stream at the beginning
                 array.add(0, prefixStream.getCOSObject());
@@ -197,10 +200,7 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
         }
         else
         {
-            if (sourcePage.hasContents())
-            {
-                LOG.warn("You are overwriting an existing content, you should use the append mode");
-            }
+            sourcePageHadContents = sourcePage.hasContents();
             sourcePage.setContents(stream);
         }
 
@@ -423,7 +423,7 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
         transform(new Matrix(transform));
 
         writeOperand(objMapping);
-        writeOperator("Do");
+        writeOperator(OperatorName.DRAW_OBJECT);
 
         restoreGraphicsState();
     }
@@ -456,146 +456,6 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
     public void concatenate2CTM(AffineTransform at) throws IOException
     {
         transform(new Matrix(at));
-    }
-
-    /**
-     * Set the stroking color space.  This will add the colorspace to the PDResources
-     * if necessary.
-     *
-     * @param colorSpace The colorspace to write.
-     * @throws IOException If there is an error writing the colorspace.
-     * @deprecated Use {@link #setStrokingColor} instead.
-     */
-    @Deprecated
-    public void setStrokingColorSpace(PDColorSpace colorSpace) throws IOException
-    {
-        setStrokingColorSpaceStack(colorSpace);
-        writeOperand(getName(colorSpace));
-        writeOperator("CS");
-    }
-
-    /**
-     * Set the stroking color space.  This will add the colorspace to the PDResources
-     * if necessary.
-     *
-     * @param colorSpace The colorspace to write.
-     * @throws IOException If there is an error writing the colorspace.
-     * @deprecated Use {@link #setNonStrokingColor(PDColor)} instead.
-     */
-    @Deprecated
-    public void setNonStrokingColorSpace(PDColorSpace colorSpace) throws IOException
-    {
-        setNonStrokingColorSpaceStack(colorSpace);
-        writeOperand(getName(colorSpace));
-        writeOperator("cs");
-    }
-
-    /**
-     * Set the color components of current stroking color space.
-     *
-     * @param components The components to set for the current color.
-     * @throws IOException If there is an error while writing to the stream.
-     * @deprecated Use {@link #setStrokingColor(PDColor)} instead.
-     */
-    @Deprecated
-    public void setStrokingColor(float[] components) throws IOException
-    {
-        if (strokingColorSpaceStack.isEmpty())
-        {
-            throw new IllegalStateException("The color space must be set before setting a color");
-        }
-
-        for (float component : components)
-        {
-            writeOperand(component);
-        }
-
-        PDColorSpace currentStrokingColorSpace = strokingColorSpaceStack.peek();
-
-        if (currentStrokingColorSpace instanceof PDSeparation ||
-            currentStrokingColorSpace instanceof PDPattern ||
-            currentStrokingColorSpace instanceof PDICCBased)
-        {
-            writeOperator("SCN");
-        }
-        else
-        {
-            writeOperator("SC");
-        }
-    }
-
-    /**
-     * Set the stroking color in the DeviceCMYK color space. Range is 0..255.
-     *
-     * @param c The cyan value.
-     * @param m The magenta value.
-     * @param y The yellow value.
-     * @param k The black value.
-     * @throws IOException If an IO error occurs while writing to the stream.
-     * @throws IllegalArgumentException If the parameters are invalid.
-     * @deprecated Use {@link #setStrokingColor(float, float, float, float)} instead.
-     */
-    @Deprecated
-    public void setStrokingColor(int c, int m, int y, int k) throws IOException
-    {
-        if (isOutside255Interval(c) || isOutside255Interval(m) || isOutside255Interval(y) || isOutside255Interval(k))
-        {
-            throw new IllegalArgumentException("Parameters must be within 0..255, but are "
-                    + String.format("(%d,%d,%d,%d)", c, m, y, k));
-        }
-        setStrokingColor(c / 255f, m / 255f, y / 255f, k / 255f);
-    }
-
-    /**
-     * Set the stroking color in the DeviceGray color space. Range is 0..255.
-     *
-     * @param g The gray value.
-     * @throws IOException If an IO error occurs while writing to the stream.
-     * @throws IllegalArgumentException If the parameter is invalid.
-     * @deprecated Use {@link #setStrokingColor(float)} instead.
-     */
-    @Deprecated
-    public void setStrokingColor(int g) throws IOException
-    {
-        if (isOutside255Interval(g))
-        {
-            throw new IllegalArgumentException("Parameter must be within 0..255, but is " + g);
-        }
-        setStrokingColor(g / 255f);
-    }
-
-    /**
-     * Set the color components of current non-stroking color space.
-     *
-     * @param components The components to set for the current color.
-     * @throws IOException If there is an error while writing to the stream.
-     * @deprecated Use {@link #setNonStrokingColor(PDColor)} instead.
-     */
-    @Deprecated
-    public void setNonStrokingColor(float[] components) throws IOException
-    {
-        if (nonStrokingColorSpaceStack.isEmpty())
-        {
-            throw new IllegalStateException("The color space must be set before setting a color");
-        }
-
-        for (float component : components)
-        {
-            writeOperand(component);
-        }
-
-        PDColorSpace currentNonStrokingColorSpace = nonStrokingColorSpaceStack.peek();
-
-        if (currentNonStrokingColorSpace instanceof PDSeparation ||
-            currentNonStrokingColorSpace instanceof PDPattern ||
-            currentNonStrokingColorSpace instanceof PDICCBased)
-        {
-            writeOperator("scn");
-        }
-        else
-        {
-            writeOperator("sc");
-        }
     }
 
     /**
@@ -845,15 +705,15 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
         switch (windingRule)
         {
             case PathIterator.WIND_NON_ZERO:
-                writeOperator("W");
+            writeOperator(OperatorName.CLIP_NON_ZERO);
                 break;
             case PathIterator.WIND_EVEN_ODD:
-                writeOperator("W*");
+            writeOperator(OperatorName.CLIP_EVEN_ODD);
                 break;
             default:
                 throw new IllegalArgumentException("Error: unknown value for winding rule");
         }
-        writeOperator("n");
+        writeOperator(OperatorName.ENDPATH);
     }
 
     /**
@@ -883,7 +743,7 @@ public final class PDPageContentStream extends PDAbstractContentStream implement
     {
         writeOperand(tag);
         writeOperand(propsName);
-        writeOperator("BDC");
+        writeOperator(OperatorName.BEGIN_MARKED_CONTENT_SEQ);
     }
 
     /**

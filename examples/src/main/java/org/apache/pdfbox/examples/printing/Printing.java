@@ -28,6 +28,8 @@ import javax.print.attribute.HashPrintRequestAttributeSet;
 import javax.print.attribute.PrintRequestAttributeSet;
 import javax.print.attribute.standard.PageRanges;
 import javax.print.attribute.standard.Sides;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.interactive.viewerpreferences.PDViewerPreferences;
 import org.apache.pdfbox.printing.PDFPageable;
@@ -45,7 +47,7 @@ public final class Printing
     /**
      * Entry point.
      */
-    public static void main(String args[]) throws PrinterException, IOException
+    public static void main(String[] args) throws PrinterException, IOException
     {
         if (args.length != 1)
         {
@@ -54,7 +56,7 @@ public final class Printing
         }
 
         String filename = args[0];
-        try (PDDocument document = PDDocument.load(new File(filename)))
+        try (PDDocument document = Loader.loadPDF(new File(filename)))
         {
             // choose your printing method:
             print(document);
@@ -68,7 +70,7 @@ public final class Printing
     /**
      * Prints the document at its actual size. This is the recommended way to print.
      */
-    private static void print(PDDocument document) throws IOException, PrinterException
+    private static void print(PDDocument document) throws PrinterException
     {
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setPageable(new PDFPageable(document));
@@ -78,8 +80,7 @@ public final class Printing
     /**
      * Prints using custom PrintRequestAttribute values.
      */
-    private static void printWithAttributes(PDDocument document)
-            throws IOException, PrinterException
+    private static void printWithAttributes(PDDocument document) throws PrinterException
     {
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setPageable(new PDFPageable(document));
@@ -93,7 +94,7 @@ public final class Printing
     /**
      * Prints with a print preview dialog.
      */
-    private static void printWithDialog(PDDocument document) throws IOException, PrinterException
+    private static void printWithDialog(PDDocument document) throws PrinterException
     {
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setPageable(new PDFPageable(document));
@@ -107,8 +108,7 @@ public final class Printing
     /**
      * Prints with a print preview dialog and custom PrintRequestAttribute values.
      */
-    private static void printWithDialogAndAttributes(PDDocument document)
-            throws IOException, PrinterException
+    private static void printWithDialogAndAttributes(PDDocument document) throws PrinterException
     {
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setPageable(new PDFPageable(document));
@@ -143,8 +143,7 @@ public final class Printing
     /**
      * Prints using a custom page size and custom margins.
      */
-    private static void printWithPaper(PDDocument document)
-            throws IOException, PrinterException
+    private static void printWithPaper(PDDocument document) throws PrinterException
     {
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setPageable(new PDFPageable(document));

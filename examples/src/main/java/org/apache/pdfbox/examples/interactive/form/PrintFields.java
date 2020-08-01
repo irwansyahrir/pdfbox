@@ -19,6 +19,8 @@ package org.apache.pdfbox.examples.interactive.form;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
@@ -61,12 +63,9 @@ public class PrintFields
         
         if (field instanceof PDNonTerminalField)
         {
-            if (!sParent.equals(field.getPartialName()))
+            if (!sParent.equals(field.getPartialName()) && partialName != null)
             {
-                if (partialName != null)
-                {
-                    sParent = sParent + "." + partialName;
-                }
+                sParent = sParent + "." + partialName;
             }
             System.out.println(sLevel + sParent);
 
@@ -109,7 +108,7 @@ public class PrintFields
             }
             else
             {
-                pdf = PDDocument.load(new File(args[0]));
+                pdf = Loader.loadPDF(new File(args[0]));
                 PrintFields exporter = new PrintFields();
                 exporter.printFields(pdf);
             }

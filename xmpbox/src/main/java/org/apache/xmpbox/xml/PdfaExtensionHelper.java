@@ -22,7 +22,6 @@
 package org.apache.xmpbox.xml;
 
 import java.util.List;
-import java.util.Map;
 
 import org.apache.xmpbox.XMPMetadata;
 import org.apache.xmpbox.schema.PDFAExtensionSchema;
@@ -43,6 +42,7 @@ import org.apache.xmpbox.type.StructuredType;
 import org.apache.xmpbox.type.TypeMapping;
 import org.apache.xmpbox.type.Types;
 import org.apache.xmpbox.xml.XmpParsingException.ErrorType;
+
 import org.w3c.dom.Attr;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
@@ -175,7 +175,7 @@ public final class PdfaExtensionHelper
             throw new XmpParsingException(ErrorType.RequiredProperty,
                     "Missing field in property definition");
         }
-        // check ptype existance
+        // check ptype existence
         PropertyType pt = transformValueType(tm, ptype);
         if (pt == null)
         {
@@ -227,10 +227,7 @@ public final class PdfaExtensionHelper
         }
         // add the structured type to list
         PropertiesDescription pm = new PropertiesDescription();
-        for (Map.Entry<String, PropertyType> entry : structuredType.getDefinedProperties().entrySet())
-        {
-            pm.addNewProperty(entry.getKey(), entry.getValue());
-        }
+        structuredType.getDefinedProperties().forEach(pm::addNewProperty);
         tm.addToDefinedStructuredTypes(ttype, tns, pm);
     }
 
@@ -256,7 +253,7 @@ public final class PdfaExtensionHelper
         }
     }
 
-    private static PropertyType transformValueType(TypeMapping tm, String valueType) throws XmpParsingException
+    private static PropertyType transformValueType(TypeMapping tm, String valueType)
     {
         if ("Lang Alt".equals(valueType))
         {
@@ -276,21 +273,19 @@ public final class PdfaExtensionHelper
         if (pos > 0)
         {
             String scard = valueType.substring(0, pos);
-            if ("seq".equals(scard))
+            switch (scard)
             {
-                card = Cardinality.Seq;
-            }
-            else if ("bag".equals(scard))
-            {
-                card = Cardinality.Bag;
-            }
-            else if ("alt".equals(scard))
-            {
-                card = Cardinality.Alt;
-            }
-            else
-            {
-                return null;
+                case "seq":
+                    card = Cardinality.Seq;
+                    break;
+                case "bag":
+                    card = Cardinality.Bag;
+                    break;
+                case "alt":
+                    card = Cardinality.Alt;
+                    break;
+                default:
+                    return null;
             }
         }
         String vt = valueType.substring(pos + 1);

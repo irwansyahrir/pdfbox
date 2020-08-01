@@ -178,7 +178,7 @@ public class PDPage implements COSObjectable, PDContentStream
     }
 
     /**
-     * Returns true if this page has contents.
+     * Returns true if this page has one or more content streams.
      */
     public boolean hasContents()
     {
@@ -234,11 +234,12 @@ public class PDPage implements COSObjectable, PDContentStream
     /**
      * This will get the key of this Page in the structural parent tree.
      * 
-     * @return the integer key of the page's entry in the structural parent tree
+     * @return the integer key of the page's entry in the structural parent tree or -1 if
+     * there isn't any.
      */
     public int getStructParents()
     {
-        return page.getInt(COSName.STRUCT_PARENTS, 0);
+        return page.getInt(COSName.STRUCT_PARENTS);
     }
 
     /**
@@ -513,10 +514,7 @@ public class PDPage implements COSObjectable, PDContentStream
     public void setContents(List<PDStream> contents)
     {
         COSArray array = new COSArray();
-        for (PDStream stream : contents)
-        {
-            array.add(stream);
-        }
+        contents.forEach(array::add);
         page.setItem(COSName.CONTENTS, array);
     }
 
@@ -657,14 +655,7 @@ public class PDPage implements COSObjectable, PDContentStream
      */
     public List<PDAnnotation> getAnnotations() throws IOException
     {
-        return getAnnotations(new AnnotationFilter()
-        {
-            @Override
-            public boolean accept(PDAnnotation annotation)
-            {
-                return true;
-            }
-        });
+        return getAnnotations(annotation -> true);
     }
 
     /**
@@ -773,11 +764,36 @@ public class PDPage implements COSObjectable, PDContentStream
             return;
         }
         COSArray array = new COSArray();
-        for (PDViewportDictionary viewport : viewports)
-        {
-            array.add(viewport);
-        }
+        viewports.forEach(array::add);
         page.setItem(COSName.VP, array);
     }
 
+    /**
+     * Get the user unit. This is a positive number that shall give the size of default user space
+     * units, in multiples of 1/72 inch, or 1 if it hasn't been set. This is supported by PDF 1.6
+     * and higher.
+     *
+     * @return the user unit.
+     */
+    public float getUserUnit()
+    {
+        float userUnit = page.getFloat(COSName.USER_UNIT, 1.0f);
+        return userUnit > 0 ? userUnit : 1.0f;
+    }
+
+    /**
+     * Get the user unit. This is a positive number that shall give the size of default user space
+     * units, in multiples of 1/72 inch. This is supported by PDF 1.6 and higher.
+     *
+     * @param userUnit
+     * throws IllegalArgumentException if the parameter is not positive.
+     */
+    public void setUserUnit(float userUnit)
+    {
+        if (userUnit <= 0)
+        {
+            throw new IllegalArgumentException("User unit must be positive");
+        }
+        page.setFloat(COSName.USER_UNIT, userUnit);
+    }
 }

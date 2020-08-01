@@ -17,6 +17,7 @@
 package org.apache.pdfbox.pdmodel.interactive.annotation;
 
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDAppearanceHandler;
 import org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDSquareAppearanceHandler;
 
@@ -61,9 +62,15 @@ public class PDAnnotationSquare extends PDAnnotationSquareCircle
     @Override
     public void constructAppearances()
     {
+        this.constructAppearances(null);
+    }
+
+    @Override
+    public void constructAppearances(PDDocument document)
+    {
         if (customAppearanceHandler == null)
         {
-            PDSquareAppearanceHandler appearanceHandler = new PDSquareAppearanceHandler(this);
+            PDSquareAppearanceHandler appearanceHandler = new PDSquareAppearanceHandler(this, document);
             appearanceHandler.generateAppearanceStreams();
         }
         else

@@ -17,15 +17,21 @@
 package org.apache.pdfbox.multipdf;
 
 import java.awt.geom.AffineTransform;
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -45,10 +51,10 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
  * Based on code contributed by Balazs Jerk.
  * 
  */
-public class Overlay
+public class Overlay implements Closeable
 {
     /**
-     * Possible location of the overlayed pages: foreground or background.
+     * Possible location of the overlaid pages: foreground or background.
      */
     public enum Position
     {
@@ -61,7 +67,7 @@ public class Overlay
     private LayoutPage oddPageOverlayPage;
     private LayoutPage evenPageOverlayPage;
 
-    private final Map<Integer, PDDocument> specificPageOverlay = new HashMap<>();
+    private final Set<PDDocument> openDocuments = new HashSet<>();
     private Map<Integer, LayoutPage> specificPageOverlayPage = new HashMap<>();
 
     private Position position = Position.BACKGROUND;
@@ -93,8 +99,8 @@ public class Overlay
     /**
      * This will add overlays to a document.
      *
-     * @param specificPageOverlayFile map of overlay files for specific pages. The page numbers are
-     * 1-based.
+     * @param specificPageOverlayFile Optional map of overlay files for specific pages. The page
+     * numbers are 1-based. The map must be empty (but not null) if no specific mappings are used.
      *
      * @return The modified input PDF document, which has to be saved and closed by the caller. If
      * the input document was passed by {@link #setInputPDF(PDDocument) setInputPDF(PDDocument)}
@@ -116,7 +122,7 @@ public class Overlay
                 loadedDocuments.put(e.getValue(), doc);
                 layouts.put(doc, getLayoutPage(doc));
             }
-            specificPageOverlay.put(e.getKey(), doc);
+            openDocuments.add(doc);
             specificPageOverlayPage.put(e.getKey(), layouts.get(doc));
         }
         processPages(inputPDFDocument);
@@ -124,10 +130,39 @@ public class Overlay
     }
 
     /**
-     * Close all input pdfs which were used for the overlay.
-     * 
+     * This will add overlays documents to a document.
+     *
+     * @param specificPageOverlayDocuments Optional map of overlay documents for specific pages. The
+     * page numbers are 1-based. The map must be empty (but not null) if no specific mappings are
+     * used.
+     *
+     * @return The modified input PDF document, which has to be saved and closed by the caller. If
+     * the input document was passed by {@link #setInputPDF(PDDocument) setInputPDF(PDDocument)}
+     * then it is that object that is returned.
+     *
      * @throws IOException if something went wrong
      */
+    public PDDocument overlayDocuments(Map<Integer, PDDocument> specificPageOverlayDocuments) throws IOException
+    {
+        loadPDFs();
+        for (Map.Entry<Integer, PDDocument> e : specificPageOverlayDocuments.entrySet())
+        {
+            PDDocument doc = e.getValue();
+            if (doc != null)
+            {
+                specificPageOverlayPage.put(e.getKey(), getLayoutPage(doc));
+            }
+        }
+        processPages(inputPDFDocument);
+        return inputPDFDocument;
+    }
+
+    /**
+     * Close all input documents which were used for the overlay and opened by this class.
+     *
+     * @throws IOException if something went wrong
+     */
+    @Override
     public void close() throws IOException
     {
         if (defaultOverlay != null)
@@ -154,15 +189,12 @@ public class Overlay
         {
             evenPageOverlay.close();
         }
-        if (specificPageOverlay != null)
+        for (PDDocument doc : openDocuments)
         {
-            for (Map.Entry<Integer, PDDocument> e : specificPageOverlay.entrySet())
-            {
-                e.getValue().close();
-            }
-            specificPageOverlay.clear();
-            specificPageOverlayPage.clear();
+            doc.close();
         }
+        openDocuments.clear();
+        specificPageOverlayPage.clear();
     }
 
     private void loadPDFs() throws IOException
@@ -232,7 +264,7 @@ public class Overlay
     
     private PDDocument loadPDF(String pdfName) throws IOException
     {
-        return PDDocument.load(new File(pdfName));
+        return Loader.loadPDF(new File(pdfName));
     }
 
     /**
@@ -243,12 +275,14 @@ public class Overlay
         private final PDRectangle overlayMediaBox;
         private final COSStream overlayContentStream;
         private final COSDictionary overlayResources;
+        private final int overlayRotation;
 
-        private LayoutPage(PDRectangle mediaBox, COSStream contentStream, COSDictionary resources)
+        private LayoutPage(PDRectangle mediaBox, COSStream contentStream, COSDictionary resources, int rotation)
         {
             overlayMediaBox = mediaBox;
             overlayContentStream = contentStream;
             overlayResources = resources;
+            overlayRotation = rotation;
         }
     }
 
@@ -262,7 +296,7 @@ public class Overlay
             resources = new PDResources();
         }
         return new LayoutPage(page.getMediaBox(), createCombinedContentStream(contents),
-                resources.getCOSObject());
+                resources.getCOSObject(), page.getRotation());
     }
     
     private Map<Integer,LayoutPage> getLayoutPages(PDDocument doc) throws IOException
@@ -279,7 +313,7 @@ public class Overlay
                 resources = new PDResources();
             }
             layoutPages.put(i, new LayoutPage(page.getMediaBox(), createCombinedContentStream(contents), 
-                    resources.getCOSObject()));
+                    resources.getCOSObject(), page.getRotation()));
         }
         return layoutPages;
     }
@@ -401,8 +435,7 @@ public class Overlay
             resources = new PDResources();
             page.setResources(resources);
         }
-        COSName xObjectId = createOverlayXObject(page, layoutPage,
-                layoutPage.overlayContentStream);
+        COSName xObjectId = createOverlayXObject(page, layoutPage);
         array.add(createOverlayStream(page, layoutPage, xObjectId));
     }
 
@@ -441,13 +474,31 @@ public class Overlay
         return layoutPage;
     }
 
-    private COSName createOverlayXObject(PDPage page, LayoutPage layoutPage, COSStream contentStream)
+    private COSName createOverlayXObject(PDPage page, LayoutPage layoutPage)
     {
-        PDFormXObject xobjForm = new PDFormXObject(contentStream);
+        PDFormXObject xobjForm = new PDFormXObject(layoutPage.overlayContentStream);
         xobjForm.setResources(new PDResources(layoutPage.overlayResources));
         xobjForm.setFormType(1);
-        xobjForm.setBBox( layoutPage.overlayMediaBox.createRetranslatedRectangle());
-        xobjForm.setMatrix(new AffineTransform());
+        xobjForm.setBBox(layoutPage.overlayMediaBox.createRetranslatedRectangle());
+        AffineTransform at = new AffineTransform();
+        switch (layoutPage.overlayRotation)
+        {
+            case 90:
+                at.translate(0, layoutPage.overlayMediaBox.getWidth());
+                at.rotate(Math.toRadians(-90));
+                break;
+            case 180:
+                at.translate(layoutPage.overlayMediaBox.getWidth(), layoutPage.overlayMediaBox.getHeight());
+                at.rotate(Math.toRadians(-180));
+                break;
+            case 270:
+                at.translate(layoutPage.overlayMediaBox.getHeight(), 0);
+                at.rotate(Math.toRadians(-270));
+                break;
+            default:
+                break;
+        }
+        xobjForm.setMatrix(at);
         PDResources resources = page.getResources();
         return resources.add(xobjForm, "OL");
     }
@@ -458,7 +509,15 @@ public class Overlay
         // create a new content stream that executes the XObject content
         StringBuilder overlayStream = new StringBuilder();
         overlayStream.append("q\nq\n");
-        AffineTransform at = calculateAffineTransform(page, layoutPage.overlayMediaBox);
+        PDRectangle overlayMediaBox = new PDRectangle(layoutPage.overlayMediaBox.getCOSArray());
+        if (layoutPage.overlayRotation == 90 || layoutPage.overlayRotation == 270)
+        {
+            overlayMediaBox.setLowerLeftX(layoutPage.overlayMediaBox.getLowerLeftY());
+            overlayMediaBox.setLowerLeftY(layoutPage.overlayMediaBox.getLowerLeftX());
+            overlayMediaBox.setUpperRightX(layoutPage.overlayMediaBox.getUpperRightY());
+            overlayMediaBox.setUpperRightY(layoutPage.overlayMediaBox.getUpperRightX());
+        }
+        AffineTransform at = calculateAffineTransform(page, overlayMediaBox);
         double[] flatmatrix = new double[6];
         at.getMatrix(flatmatrix);
         for (double v : flatmatrix)
@@ -466,7 +525,13 @@ public class Overlay
             overlayStream.append(float2String((float) v));
             overlayStream.append(" ");
         }
-        overlayStream.append(" cm\n/");
+        overlayStream.append(" cm\n");
+
+        // if debugging, insert
+        // 0 0 overlayMediaBox.getHeight() overlayMediaBox.getWidth() re\ns\n
+        // into the content stream
+
+        overlayStream.append(" /");
         overlayStream.append(xObjectId.getName());
         overlayStream.append(" Do Q\nQ\n");
         return createStream(overlayStream.toString());
@@ -514,7 +579,7 @@ public class Overlay
         try (OutputStream out = stream.createOutputStream(
                 content.length() > 20 ? COSName.FLATE_DECODE : null))
         {
-            out.write(content.getBytes("ISO-8859-1"));
+            out.write(content.getBytes(StandardCharsets.ISO_8859_1));
         }
         return stream;
     }
@@ -530,9 +595,9 @@ public class Overlay
     }
 
     /**
-     * Sets the file to be overlayed.
+     * Sets the file to be overlaid.
      *
-     * @param inputFile the file to be overlayed. The {@link PDDocument} object gathered from
+     * @param inputFile the file to be overlaid. The {@link PDDocument} object gathered from
      * opening this file will be returned by
      * {@link #overlay(java.util.Map) overlay(Map&lt;Integer, String&gt;)}.
      */
@@ -542,9 +607,9 @@ public class Overlay
     }
 
     /**
-     * Sets the PDF to be overlayed.
+     * Sets the PDF to be overlaid.
      *
-     * @param inputPDF the PDF to be overlayed. This will be the object that is returned by
+     * @param inputPDF the PDF to be overlaid. This will be the object that is returned by
      * {@link #overlay(java.util.Map) overlay(Map&lt;Integer, String&gt;)}.
      */
     public void setInputPDF(PDDocument inputPDF)

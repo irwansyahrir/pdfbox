@@ -20,6 +20,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDAppearanceHandler;
 import org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDFreeTextAppearanceHandler;
@@ -35,6 +36,21 @@ public class PDAnnotationFreeText extends PDAnnotationMarkup
      * The type of annotation.
      */
     public static final String SUB_TYPE = "FreeText";
+
+    /**
+     * A plain free-text annotation, also known as a text box comment.
+     */
+    public static final String IT_FREE_TEXT = "FreeText";
+
+    /**
+     * A callout, associated with an area on the page through the callout line specified.
+     */
+    public static final String IT_FREE_TEXT_CALLOUT = "FreeTextCallout";
+
+    /**
+     * The annotation is intended to function as a click-to-type or typewriter object.
+     */
+    public static final String IT_FREE_TEXT_TYPE_WRITER = "FreeTextTypeWriter";
 
     private PDAppearanceHandler customAppearanceHandler;
 
@@ -172,7 +188,8 @@ public class PDAnnotationFreeText extends PDAnnotationMarkup
     }
 
     /**
-     * This will set the coordinates of the callout line.
+     * This will set the coordinates of the callout line. (PDF 1.6 and higher) Only relevant if the
+     * intent is FreeTextCallout.
      *
      * @param callout An array of four or six numbers specifying a callout line attached to the free
      * text annotation. Six numbers [ x1 y1 x2 y2 x3 y3 ] represent the starting, knee point, and
@@ -187,7 +204,8 @@ public class PDAnnotationFreeText extends PDAnnotationMarkup
     }
 
     /**
-     * This will get the coordinates of the callout line.
+     * This will get the coordinates of the callout line. (PDF 1.6 and higher) Only relevant if the
+     * intent is FreeTextCallout.
      *
      * @return An array of four or six numbers specifying a callout line attached to the free text
      * annotation. Six numbers [ x1 y1 x2 y2 x3 y3 ] represent the starting, knee point, and ending
@@ -296,9 +314,15 @@ public class PDAnnotationFreeText extends PDAnnotationMarkup
     @Override
     public void constructAppearances()
     {
+        this.constructAppearances(null);
+    }
+
+    @Override
+    public void constructAppearances(PDDocument document)
+    {
         if (customAppearanceHandler == null)
         {
-            PDFreeTextAppearanceHandler appearanceHandler = new PDFreeTextAppearanceHandler(this);
+            PDFreeTextAppearanceHandler appearanceHandler = new PDFreeTextAppearanceHandler(this, document);
             appearanceHandler.generateAppearanceStreams();
         }
         else

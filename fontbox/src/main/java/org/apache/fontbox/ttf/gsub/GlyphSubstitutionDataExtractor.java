@@ -103,22 +103,27 @@ public class GlyphSubstitutionDataExtractor
             LangSysTable langSysTable, FeatureListTable featureListTable,
             LookupListTable lookupListTable)
     {
+        FeatureRecord[] featureRecords = featureListTable.getFeatureRecords();
         for (int featureIndex : langSysTable.getFeatureIndices())
         {
-            FeatureRecord featureRecord = featureListTable.getFeatureRecords()[featureIndex];
-            populateGsubData(gsubData, featureRecord, lookupListTable);
+            if (featureIndex < featureRecords.length)
+            {
+                populateGsubData(gsubData, featureRecords[featureIndex], lookupListTable);
+            }
         }
     }
 
     private void populateGsubData(Map<String, Map<List<Integer>, Integer>> gsubData,
             FeatureRecord featureRecord, LookupListTable lookupListTable)
     {
-
+        LookupTable[] lookups = lookupListTable.getLookups();
         Map<List<Integer>, Integer> glyphSubstitutionMap = new LinkedHashMap<>();
         for (int lookupIndex : featureRecord.getFeatureTable().getLookupListIndices())
         {
-            LookupTable lookupTable = lookupListTable.getLookups()[lookupIndex];
-            extractData(glyphSubstitutionMap, lookupTable);
+            if (lookupIndex < lookups.length)
+            {
+                extractData(glyphSubstitutionMap, lookups[lookupIndex]);
+            }
         }
 
         LOG.debug("*********** extracting GSUB data for the feature: "
@@ -152,7 +157,8 @@ public class GlyphSubstitutionDataExtractor
             }
             else
             {
-                LOG.warn("The type " + lookupSubTable + " is not yet supported, will be ignored");
+                // usually null, due to being skipped in GlyphSubstitutionTable.readLookupTable()
+                LOG.debug("The type " + lookupSubTable + " is not yet supported, will be ignored");
             }
         }
 

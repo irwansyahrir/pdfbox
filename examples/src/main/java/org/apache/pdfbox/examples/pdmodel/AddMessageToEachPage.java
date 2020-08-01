@@ -16,9 +16,11 @@
  */
 package org.apache.pdfbox.examples.pdmodel;
 
+import java.awt.Color;
 import java.io.File;
 import java.io.IOException;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -55,7 +57,7 @@ public class AddMessageToEachPage
      */
     public void doIt( String file, String message, String  outfile ) throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(file)))
+        try (PDDocument doc = Loader.loadPDF(new File(file)))
         {
             PDFont font = PDType1Font.HELVETICA_BOLD;
             float fontSize = 36.0f;
@@ -79,7 +81,7 @@ public class AddMessageToEachPage
                     // set font and font size
                     contentStream.setFont( font, fontSize );
                     // set text color to red
-                    contentStream.setNonStrokingColor(255, 0, 0);
+                    contentStream.setNonStrokingColor(Color.red);
                     if (rotate)
                     {
                         // rotate the text according to the page rotation

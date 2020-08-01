@@ -16,6 +16,7 @@
  */
 package org.apache.pdfbox.examples.pdmodel;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
@@ -23,6 +24,7 @@ import org.apache.pdfbox.pdmodel.common.PDMetadata;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 
@@ -49,7 +51,7 @@ public class PrintDocumentMetaData
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 PrintDocumentMetaData meta = new PrintDocumentMetaData();
                 meta.printMetadata( document );
@@ -89,7 +91,7 @@ public class PrintDocumentMetaData
         System.out.println( "Trapped=" + info.getTrapped() );
         if( metadata != null )
         {
-            String string =  new String( metadata.toByteArray(), "ISO-8859-1" );
+            String string =  new String( metadata.toByteArray(), StandardCharsets.ISO_8859_1 );
             System.out.println( "Metadata=" + string );
         }
     }

@@ -131,7 +131,9 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * This will set unicode file name.
+     * This will set the unicode file name. If you call this, then do not forget to also call
+     * {@link #setFile(java.lang.String) setFile(String)} or the attachment will not be visible on
+     * some viewers.
      *
      * @param file The name of the file.
      */
@@ -152,7 +154,9 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * This will set the file name.
+     * This will set the file name. You should also call
+     * {@link #setFileUnicode(java.lang.String) setFileUnicode(String)} for cross-platform and
+     * cross-language compatibility.
      *
      * @param file The name of the file.
      */
@@ -173,16 +177,6 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * This will set name representing a dos file.
-     *
-     * @param file The name of the file.
-     */
-    public void setFileDos( String file )
-    {
-        fs.setString( COSName.DOS, file );
-    }
-
-    /**
      * This will get the name representing a Mac file.
      *
      * @return The file name.
@@ -193,16 +187,6 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * This will set name representing a Mac file.
-     *
-     * @param file The name of the file.
-     */
-    public void setFileMac( String file )
-    {
-        fs.setString( COSName.MAC, file );
-    }
-
-    /**
      * This will get the name representing a Unix file.
      *
      * @return The file name.
@@ -210,16 +194,6 @@ public class PDComplexFileSpecification extends PDFileSpecification
     public String getFileUnix()
     {
         return fs.getString( COSName.UNIX );
-    }
-
-    /**
-     * This will set name representing a Unix file.
-     *
-     * @param file The name of the file.
-     */
-    public void setFileUnix( String file )
-    {
-        fs.setString( COSName.UNIX, file );
     }
 
     /**
@@ -260,7 +234,9 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * Set the embedded file for this spec.
+     * Set the embedded file for this spec. You should also call
+     * {@link #setEmbeddedFileUnicode(org.apache.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile) setEmbeddedFileUnicode(PDEmbeddedFile)}
+     * for cross-platform and cross-language compatibility.
      *
      * @param file The file to be embedded.
      */
@@ -295,25 +271,6 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * Set the embedded dos file for this spec.
-     *
-     * @param file The dos file to be embedded.
-     */
-    public void setEmbeddedFileDos( PDEmbeddedFile file )
-    {
-        COSDictionary ef = getEFDictionary();
-        if( ef == null && file != null )
-        {
-            ef = new COSDictionary();
-            fs.setItem( COSName.EF, ef );
-        }
-        if( ef != null )
-        {
-            ef.setItem( COSName.DOS, file );
-        }
-    }
-
-    /**
      * Get the embedded Mac file.
      *
      * @return The embedded Mac file for this file spec.
@@ -327,25 +284,6 @@ public class PDComplexFileSpecification extends PDFileSpecification
             file = new PDEmbeddedFile( stream );
         }
         return file;
-    }
-
-    /**
-     * Set the embedded Mac file for this spec.
-     *
-     * @param file The Mac file to be embedded.
-     */
-    public void setEmbeddedFileMac( PDEmbeddedFile file )
-    {
-        COSDictionary ef = getEFDictionary();
-        if( ef == null && file != null )
-        {
-            ef = new COSDictionary();
-            fs.setItem( COSName.EF, ef );
-        }
-        if( ef != null )
-        {
-            ef.setItem( COSName.MAC, file );
-        }
     }
 
     /**
@@ -365,25 +303,6 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * Set the embedded Unix file for this spec.
-     *
-     * @param file The Unix file to be embedded.
-     */
-    public void setEmbeddedFileUnix( PDEmbeddedFile file )
-    {
-        COSDictionary ef = getEFDictionary();
-        if( ef == null && file != null )
-        {
-            ef = new COSDictionary();
-            fs.setItem( COSName.EF, ef );
-        }
-        if( ef != null )
-        {
-            ef.setItem( COSName.UNIX, file );
-        }
-    }
-    
-    /**
      * Get the embedded unicode file.
      *
      * @return The embedded unicode file for this file spec.
@@ -400,7 +319,10 @@ public class PDComplexFileSpecification extends PDFileSpecification
     }
 
     /**
-     * Set the embedded Unicode file for this spec.
+     * Set the embedded Unicode file for this spec. If you call this, then do not forget to also
+     * call
+     * {@link #setEmbeddedFile(org.apache.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile) setEmbeddedFile(PDEmbeddedFile)}
+     * or the attachment will not be visible on some viewers.
      *
      * @param file The Unicode file to be embedded.
      */

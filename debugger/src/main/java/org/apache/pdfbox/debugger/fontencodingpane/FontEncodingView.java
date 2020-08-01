@@ -17,7 +17,6 @@
 package org.apache.pdfbox.debugger.fontencodingpane;
 
 import javax.swing.BorderFactory;
-import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -29,16 +28,19 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.Iterator;
 import java.util.Map;
 import org.apache.pdfbox.debugger.PDFDebugger;
+import org.apache.pdfbox.debugger.ui.HighResolutionImageIcon;
 
 /**
  * @author Khyrul Bashar
@@ -48,6 +50,9 @@ import org.apache.pdfbox.debugger.PDFDebugger;
 class FontEncodingView
 {
     private JPanel panel;
+
+    private static final AffineTransform DEFAULT_TRANSFORM = GraphicsEnvironment.getLocalGraphicsEnvironment().
+                        getDefaultScreenDevice().getDefaultConfiguration().getDefaultTransform();
 
     /**
      * Constructor.
@@ -109,7 +114,7 @@ class FontEncodingView
             while (keys.hasNext())
             {
                 int fontSize = Integer.parseInt(PDFDebugger.configuration.getProperty(
-                                    "headerFontSize", "" + headerPanel.getFont().getSize()));
+                                    "headerFontSize", Integer.toString(headerPanel.getFont().getSize())));
                 String key = keys.next();
                 JLabel encodingNameLabel = new JLabel(key + ": " + attributes.get(key));
                 encodingNameLabel.setFont(new Font(Font.DIALOG, Font.PLAIN, fontSize));
@@ -152,20 +157,27 @@ class FontEncodingView
                 {
                     JLabel label = new JLabel(SimpleFont.NO_GLYPH, SwingConstants.CENTER);
                     int fontSize = Integer.parseInt(PDFDebugger.configuration.getProperty(
-                                        "encodingFontSize", "" + label.getFont().getSize()));
+                                        "encodingFontSize", Integer.toString(label.getFont().getSize())));
                     label.setFont(new Font(Font.DIALOG, Font.PLAIN, fontSize));
                     label.setForeground(Color.GRAY);
                     return label;
                 }
                 Rectangle cellRect = jTable.getCellRect(row, col, false);
                 BufferedImage bim = renderGlyph(path, bounds2D, cellRect);
-                return new JLabel(new ImageIcon(bim), SwingConstants.CENTER);
+                return new JLabel(new HighResolutionImageIcon(
+                                   bim, 
+                                   (int) Math.ceil(bim.getWidth() / DEFAULT_TRANSFORM.getScaleX()), 
+                                   (int) Math.ceil(bim.getHeight() / DEFAULT_TRANSFORM.getScaleY())), 
+                                  SwingConstants.CENTER);
             }
             if (o instanceof BufferedImage)
             {
                 Rectangle cellRect = jTable.getCellRect(row, col, false);
                 BufferedImage glyphImage = (BufferedImage) o;
-                BufferedImage cellImage = new BufferedImage((int) cellRect.getWidth(), (int) cellRect.getHeight(), BufferedImage.TYPE_INT_RGB);
+                BufferedImage cellImage = new BufferedImage(
+                        (int) (cellRect.getWidth() * DEFAULT_TRANSFORM.getScaleX()),
+                        (int) (cellRect.getHeight() * DEFAULT_TRANSFORM.getScaleY()),
+                        BufferedImage.TYPE_INT_RGB);
                 Graphics2D g = (Graphics2D) cellImage.getGraphics();
                 g.setBackground(Color.white);
                 g.clearRect(0, 0, cellImage.getWidth(), cellImage.getHeight());
@@ -173,23 +185,26 @@ class FontEncodingView
                 double scale = 1 / (glyphImage.getHeight() / cellRect.getHeight());
 
                 // horizontal center
-                g.translate((cellRect.getWidth() - glyphImage.getWidth() * scale) / 2, 0);
+                g.translate((cellRect.getWidth() - glyphImage.getWidth() * scale) / 2 * DEFAULT_TRANSFORM.getScaleX(), 0);
 
                 // scale from the glyph to the cell
-                g.scale(scale, scale);
+                g.scale(scale * DEFAULT_TRANSFORM.getScaleX(), scale * DEFAULT_TRANSFORM.getScaleY());
 
                 g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
                 g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);              
                 g.drawImage(glyphImage, 0, 0, null);
                 g.dispose();
-                return new JLabel(new ImageIcon(cellImage));
+                return new JLabel(new HighResolutionImageIcon(
+                                   cellImage,
+                                   (int) Math.ceil(cellImage.getWidth() / DEFAULT_TRANSFORM.getScaleX()), 
+                                   (int) Math.ceil(cellImage.getHeight() / DEFAULT_TRANSFORM.getScaleY())));
             }
             if (o != null)
             {
                 JLabel label = new JLabel(o.toString(), SwingConstants.CENTER);
                 int fontSize = Integer.parseInt(PDFDebugger.configuration.getProperty(
-                        "encodingFontSize", "" + label.getFont().getSize()));
+                        "encodingFontSize", Integer.toString(label.getFont().getSize())));
                 label.setFont(new Font(Font.DIALOG, Font.PLAIN, fontSize));
                 if (SimpleFont.NO_GLYPH.equals(o) || ".notdef".equals(o))
                 {
@@ -203,7 +218,10 @@ class FontEncodingView
 
         private BufferedImage renderGlyph(GeneralPath path, Rectangle2D bounds2D, Rectangle cellRect)
         {
-            BufferedImage bim = new BufferedImage((int) cellRect.getWidth(), (int) cellRect.getHeight(), BufferedImage.TYPE_INT_RGB);
+            BufferedImage bim = new BufferedImage(
+                    (int) (cellRect.getWidth() * DEFAULT_TRANSFORM.getScaleX()),
+                    (int) (cellRect.getHeight() * DEFAULT_TRANSFORM.getScaleY()),
+                    BufferedImage.TYPE_INT_RGB);
             Graphics2D g = (Graphics2D) bim.getGraphics();
             g.setBackground(Color.white);
             g.clearRect(0, 0, bim.getWidth(), bim.getHeight());
@@ -215,10 +233,10 @@ class FontEncodingView
             g.translate(0, -bim.getHeight());
 
             // horizontal center
-            g.translate((cellRect.getWidth() - bounds2D.getWidth() * scale) / 2, 0);
+            g.translate((cellRect.getWidth() - bounds2D.getWidth() * scale) / 2 * DEFAULT_TRANSFORM.getScaleX(), 0);
 
             // scale from the glyph to the cell
-            g.scale(scale, scale);
+            g.scale(scale * DEFAULT_TRANSFORM.getScaleX(), scale * DEFAULT_TRANSFORM.getScaleY());
 
             // Adjust for negative y min bound
             g.translate(0, -yBounds[0]);

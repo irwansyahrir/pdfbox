@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.fontbox.ttf.CmapLookup;
-import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.HeaderTable;
 import org.apache.fontbox.ttf.HorizontalHeaderTable;
 import org.apache.fontbox.ttf.OS2WindowsMetricsTable;
@@ -58,14 +57,6 @@ abstract class TrueTypeEmbedder implements Subsetter
     protected TrueTypeFont ttf;
     protected PDFontDescriptor fontDescriptor;
 
-    /**
-     * For API backwards compatibility.
-     * 
-     * @deprecated
-     */
-    @Deprecated
-    protected final CmapSubtable cmap;
-
     protected final CmapLookup cmapLookup;
     private final Set<Integer> subsetCodePoints = new HashSet<>();
     private final boolean embedSubset;
@@ -91,7 +82,26 @@ abstract class TrueTypeEmbedder implements Subsetter
         if (!embedSubset)
         {
             // full embedding
-            PDStream stream = new PDStream(document, ttf.getOriginalData(), COSName.FLATE_DECODE);
+            
+            // TrueType collections are not supported
+            InputStream is = ttf.getOriginalData();
+            byte[] b = new byte[4];
+            is.mark(b.length);
+            if (is.read(b) == b.length && new String(b).equals("ttcf"))
+            {
+                is.close();
+                throw new IOException("Full embedding of TrueType font collections not supported");
+            }
+            if (is.markSupported())
+            {
+                is.reset();
+            }
+            else
+            {
+                is.close();
+                is = ttf.getOriginalData();
+            }
+            PDStream stream = new PDStream(document, is, COSName.FLATE_DECODE);
             stream.getCOSObject().setLong(COSName.LENGTH1, ttf.getOriginalDataSize());
             fontDescriptor.setFontFile2(stream);
         }
@@ -99,7 +109,6 @@ abstract class TrueTypeEmbedder implements Subsetter
         dict.setName(COSName.BASE_FONT, ttf.getName());
 
         // choose a Unicode "cmap"
-        cmap = ttf.getUnicodeCmap();
         cmapLookup = ttf.getUnicodeCmapLookup();
     }
 
@@ -132,15 +141,13 @@ abstract class TrueTypeEmbedder implements Subsetter
         if (ttf.getOS2Windows() != null)
         {
             int fsType = ttf.getOS2Windows().getFsType();
-            int exclusive = fsType & 0x8; // bits 0-3 are a set of exclusive bits
-
-            if ((exclusive & OS2WindowsMetricsTable.FSTYPE_RESTRICTED) ==
+            if ((fsType & OS2WindowsMetricsTable.FSTYPE_RESTRICTED) ==
                              OS2WindowsMetricsTable.FSTYPE_RESTRICTED)
             {
                 // restricted License embedding
                 return false;
             }
-            else if ((exclusive & OS2WindowsMetricsTable.FSTYPE_BITMAP_ONLY) ==
+            else if ((fsType & OS2WindowsMetricsTable.FSTYPE_BITMAP_ONLY) ==
                                  OS2WindowsMetricsTable.FSTYPE_BITMAP_ONLY)
             {
                 // bitmap embedding only
@@ -176,7 +183,15 @@ abstract class TrueTypeEmbedder implements Subsetter
         fd.setFontName(ttf.getName());
 
         OS2WindowsMetricsTable os2 = ttf.getOS2Windows();
+        if (os2 == null)
+        {
+            throw new IOException("os2 table is missing in font " + ttf.getName());
+        }
         PostScriptTable post = ttf.getPostScript();
+        if (post == null)
+        {
+            throw new IOException("post table is missing in font " + ttf.getName());            
+        }
 
         // Flags
         fd.setFixedPitch(post.getIsFixedPitch() > 0 ||
@@ -258,17 +273,6 @@ abstract class TrueTypeEmbedder implements Subsetter
         fd.setStemV(fd.getFontBoundingBox().getWidth() * .13f);
 
         return fd;
-    }
-
-    /**
-     * Returns the FontBox font.
-     * 
-     * @deprecated 
-     */
-    @Deprecated
-    public TrueTypeFont getTrueTypeFont()
-    {
-        return ttf;
     }
 
     /**

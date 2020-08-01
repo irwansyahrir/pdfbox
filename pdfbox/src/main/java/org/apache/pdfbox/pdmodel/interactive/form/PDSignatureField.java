@@ -73,33 +73,14 @@ public class PDSignatureField extends PDTerminalField
     private String generatePartialName()
     {
         String fieldName = "Signature";
-        Set<String> sigNames = new HashSet<>();
-        // fixme: this ignores non-terminal fields, so will miss any descendant signatures
-        for (PDField field : getAcroForm().getFields())
-        {
-            if(field instanceof PDSignatureField)
-            {
-                sigNames.add(field.getPartialName());
-            }
-        }
+        Set<String> nameSet = new HashSet<>();
+        getAcroForm().getFieldTree().forEach(field -> nameSet.add(field.getPartialName()));
         int i = 1;
-        while(sigNames.contains(fieldName+i))
+        while (nameSet.contains(fieldName + i))
         {
             ++i;
         }
         return fieldName+i;
-    }
-    
-    /**
-     * Add a signature dictionary to the signature field.
-     * 
-     * @param value is the PDSignatureField
-     * @deprecated Use {@link #setValue(PDSignature)} instead.
-     */
-    @Deprecated
-    public void setSignature(PDSignature value) throws IOException
-    {
-        setValue(value);
     }
     
     /**
@@ -125,8 +106,6 @@ public class PDSignatureField extends PDTerminalField
     }
     
     /**
-     * Sets the value of this field.
-     * 
      * <b>This will throw an UnsupportedOperationException if used as the signature fields
      * value can't be set using a String</b>
      * 
@@ -135,7 +114,7 @@ public class PDSignatureField extends PDTerminalField
      * @throws UnsupportedOperationException in all cases!
      */
     @Override
-    public void setValue(String value) throws UnsupportedOperationException
+    public void setValue(String value)
     {
         throw new UnsupportedOperationException("Signature fields don't support setting the value as String "
                 + "- use setValue(PDSignature value) instead");

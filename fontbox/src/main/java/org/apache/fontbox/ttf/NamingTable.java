@@ -18,12 +18,11 @@ package org.apache.fontbox.ttf;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import org.apache.fontbox.util.Charsets;
 
 /**
  * A table in a true type font.
@@ -58,7 +57,7 @@ public class NamingTable extends TTFTable
      * @throws IOException If there is an error reading the data.
      */
     @Override
-    public void read(TrueTypeFont ttf, TTFDataStream data) throws IOException
+    void read(TrueTypeFont ttf, TTFDataStream data) throws IOException
     {
         int formatSelector = data.readUnsignedShort();
         int numberOfNameRecords = data.readUnsignedShort();
@@ -83,28 +82,28 @@ public class NamingTable extends TTFTable
             data.seek(getOffset() + (2*3)+numberOfNameRecords*2*6+nr.getStringOffset());
             int platform = nr.getPlatformId();
             int encoding = nr.getPlatformEncodingId();
-            Charset charset = Charsets.ISO_8859_1;
+            Charset charset = StandardCharsets.ISO_8859_1;
             if (platform == NameRecord.PLATFORM_WINDOWS && (encoding == NameRecord.ENCODING_WINDOWS_SYMBOL || encoding == NameRecord.ENCODING_WINDOWS_UNICODE_BMP))
             {
-                charset = Charsets.UTF_16;
+                charset = StandardCharsets.UTF_16;
             }
             else if (platform == NameRecord.PLATFORM_UNICODE)
             {
-                charset = Charsets.UTF_16;
+                charset = StandardCharsets.UTF_16;
             }
             else if (platform == NameRecord.PLATFORM_ISO)
             {
                 switch (encoding)
                 {
                     case 0:
-                        charset = Charsets.US_ASCII;
+                        charset = StandardCharsets.US_ASCII;
                         break;
                     case 1:
                         //not sure is this is correct??
-                        charset = Charsets.ISO_10646;
+                        charset = StandardCharsets.UTF_16BE;
                         break;
                     case 2:
-                        charset = Charsets.ISO_8859_1;
+                        charset = StandardCharsets.ISO_8859_1;
                         break;
                     default:
                         break;

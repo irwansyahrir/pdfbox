@@ -28,6 +28,7 @@ import java.io.InputStream;
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 
@@ -165,7 +166,7 @@ public class PDVisibleSignDesigner
 
     private void calculatePageSizeFromFile(String filename, int page) throws IOException
     {
-        try (PDDocument document = PDDocument.load(new File(filename)))
+        try (PDDocument document = Loader.loadPDF(new File(filename)))
         {
             // calculate height and width of document page
             calculatePageSize(document, page);
@@ -174,7 +175,7 @@ public class PDVisibleSignDesigner
 
     private void calculatePageSizeFromStream(InputStream documentStream, int page) throws IOException
     {
-        try (PDDocument document = PDDocument.load(documentStream))
+        try (PDDocument document = Loader.loadPDF(documentStream))
         {
             // calculate height and width of document page
             calculatePageSize(document, page);
@@ -220,20 +221,21 @@ public class PDVisibleSignDesigner
                 yAxis = pageHeight - xAxis - imageWidth;
                 xAxis = temp;
 
+                affineTransform = new AffineTransform(
+                        0, imageHeight / imageWidth, -imageWidth / imageHeight, 0, imageWidth, 0);
+
                 temp = imageHeight;
                 imageHeight = imageWidth;
                 imageWidth = temp;
-
-                affineTransform = new AffineTransform(0, 0.5, -2, 0, 100, 0);
                 break;
-                
+
             case 180:
                 float newX = pageWidth - xAxis - imageWidth;
                 float newY = pageHeight - yAxis - imageHeight;
                 xAxis = newX;
                 yAxis = newY;
-                
-                affineTransform = new AffineTransform(-1, 0, 0, -1, 100, 50);
+
+                affineTransform = new AffineTransform(-1, 0, 0, -1, imageWidth, imageHeight);
                 break;
 
             case 270:
@@ -241,11 +243,12 @@ public class PDVisibleSignDesigner
                 xAxis = pageWidth - yAxis - imageHeight;
                 yAxis = temp;
 
+                affineTransform = new AffineTransform(
+                        0, -imageHeight / imageWidth, imageWidth / imageHeight, 0, 0, imageHeight);
+
                 temp = imageHeight;
                 imageHeight = imageWidth;
                 imageWidth = temp;
-
-                affineTransform = new AffineTransform(0, -0.5, 2, 0, 0, 50);
                 break;
 
             case 0:

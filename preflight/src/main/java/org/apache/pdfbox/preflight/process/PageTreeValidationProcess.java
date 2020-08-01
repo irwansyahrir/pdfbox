@@ -28,6 +28,7 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_NOCATA
 
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.preflight.PreflightConstants;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_PDF_PROCESSING_MISSING;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
@@ -50,12 +51,22 @@ public class PageTreeValidationProcess extends AbstractProcess
                         "/Pages dictionary entry is missing in document catalog"));
                 return;
             }
-            int numPages = context.getDocument().getNumberOfPages();
-            for (int i = 0; i < numPages; i++)
+            int p = 0;
+            for (PDPage page : context.getDocument().getPages())
             {
-                context.setCurrentPageNumber(i);
-                validatePage(context, context.getDocument().getPage(i));
+                context.setCurrentPageNumber(p);
+                validatePage(context, page);
+
+                if (context.getDocument().getValidationErrors().size() > context.getConfig()
+                        .getMaxErrors())
+                {
+                    context.addValidationError(new ValidationError(PreflightConstants.ERROR_UNKNOWN_ERROR, 
+                            "Over " + context.getConfig().getMaxErrors() +
+                            " errors, page tree validation process aborted"));
+                    break;
+                }
                 context.setCurrentPageNumber(null);
+                ++p;
             }
         }
         else
@@ -64,7 +75,7 @@ public class PageTreeValidationProcess extends AbstractProcess
         }
     }
 
-    protected void validatePage(PreflightContext context, PDPage page) throws ValidationException
+    private void validatePage(PreflightContext context, PDPage page) throws ValidationException
     {
         ContextHelper.validateElement(context, page, PAGE_PROCESS);
     }

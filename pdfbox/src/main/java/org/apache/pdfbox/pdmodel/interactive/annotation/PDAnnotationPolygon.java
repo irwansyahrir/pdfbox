@@ -19,6 +19,7 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDAppearanceHandler;
 import org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDPolygonAppearanceHandler;
@@ -182,9 +183,15 @@ public class PDAnnotationPolygon extends PDAnnotationMarkup
     @Override
     public void constructAppearances()
     {
+        this.constructAppearances(null);
+    }
+
+    @Override
+    public void constructAppearances(PDDocument document)
+    {
         if (customAppearanceHandler == null)
         {
-            PDPolygonAppearanceHandler appearanceHandler = new PDPolygonAppearanceHandler(this);
+            PDPolygonAppearanceHandler appearanceHandler = new PDPolygonAppearanceHandler(this, document);
             appearanceHandler.generateAppearanceStreams();
         }
         else

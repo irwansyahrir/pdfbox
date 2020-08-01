@@ -21,11 +21,9 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
-import java.util.GregorianCalendar;
 import java.util.TimeZone;
-
-import org.apache.fontbox.util.Charsets;
 
 /**
  * An interface into a data stream.
@@ -61,7 +59,7 @@ abstract class TTFDataStream implements Closeable
      */
     public String readString(int length) throws IOException
     {
-        return readString(length, Charsets.ISO_8859_1);
+        return readString(length, StandardCharsets.ISO_8859_1);
     }
 
     /**
@@ -116,7 +114,7 @@ abstract class TTFDataStream implements Closeable
     public int readSignedByte() throws IOException
     {
         int signedByte = read();
-        return signedByte < 127 ? signedByte : signedByte - 256;
+        return signedByte <= 127 ? signedByte : signedByte - 256;
     }
 
     /**
@@ -138,7 +136,7 @@ abstract class TTFDataStream implements Closeable
     /**
      * Read an unsigned integer.
      * 
-     * @return An unsiged integer.
+     * @return An unsigned integer.
      * @throws IOException If there is an error reading the data.
      */
     public long readUnsignedInt() throws IOException
@@ -213,7 +211,7 @@ abstract class TTFDataStream implements Closeable
     public Calendar readInternationalDate() throws IOException
     {
         long secondsSince1904 = readLong();
-        Calendar cal = GregorianCalendar.getInstance(TimeZone.getTimeZone("UTC"));
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.set(1904, 0, 1, 0, 0, 0);
         cal.set(Calendar.MILLISECOND, 0);
         long millisFor1904 = cal.getTimeInMillis();
@@ -223,21 +221,13 @@ abstract class TTFDataStream implements Closeable
     }
 
     /**
-     * Reads a tag, an arrau of four uint8s used to identify a script, language system, feature,
+     * Reads a tag, an array of four uint8s used to identify a script, language system, feature,
      * or baseline.
      */
     public String readTag() throws IOException
     {
-        return new String(read(4), Charsets.US_ASCII);
+        return new String(read(4), StandardCharsets.US_ASCII);
     }
-
-    /**
-     * Close the underlying resources.
-     * 
-     * @throws IOException If there is an error closing the resources.
-     */
-    @Override
-    public abstract void close() throws IOException;
 
     /**
      * Seek into the datasource.

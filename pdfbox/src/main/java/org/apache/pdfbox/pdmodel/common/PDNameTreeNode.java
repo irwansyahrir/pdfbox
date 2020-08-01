@@ -135,7 +135,7 @@ public abstract class PDNameTreeNode<T extends COSObjectable> implements COSObje
      */
     public void setKids( List<? extends PDNameTreeNode<T>> kids )
     {
-        if (kids != null && kids.size() > 0)
+        if (kids != null && !kids.isEmpty())
         {
             for (PDNameTreeNode<T> kidsNode : kids)
             {
@@ -167,7 +167,7 @@ public abstract class PDNameTreeNode<T extends COSObjectable> implements COSObje
         else
         {
             List<PDNameTreeNode<T>> kids = getKids();
-            if (kids != null && kids.size() > 0)
+            if (kids != null && !kids.isEmpty())
             {
                 PDNameTreeNode<T> firstKid = kids.get(0);
                 PDNameTreeNode<T> lastKid = kids.get(kids.size() - 1);
@@ -295,11 +295,10 @@ public abstract class PDNameTreeNode<T extends COSObjectable> implements COSObje
     protected abstract PDNameTreeNode<T> createChildNode( COSDictionary dic );
 
     /**
-     * Set the names of for this node.  The keys should be java.lang.String and the
-     * values must be a COSObjectable.  This method will set the appropriate upper and lower
-     * limits based on the keys in the map.
+     * Set the names for this node. This method will set the appropriate upper and lower limits
+     * based on the keys in the map.
      *
-     * @param names map of names to objects, or <code>null</code>
+     * @param names map of names to objects, or <code>null</code> for nothing.
      */
     public void setNames( Map<String, T> names )
     {

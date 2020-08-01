@@ -24,18 +24,14 @@ package org.apache.pdfbox.preflight.parser;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.activation.DataSource;
-import javax.activation.FileDataSource;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNull;
@@ -44,10 +40,8 @@ import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
-import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.io.RandomAccessBufferedFileInputStream;
+import org.apache.pdfbox.io.RandomAccessBufferedFile;
 import org.apache.pdfbox.io.ScratchFile;
-import org.apache.pdfbox.pdfparser.PDFObjectStreamParser;
 import org.apache.pdfbox.pdfparser.PDFParser;
 import org.apache.pdfbox.pdfparser.XrefTrailerResolver.XRefType;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -72,6 +66,7 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_NAME_T
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_NUMERIC_RANGE;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_OBJ_DELIMITER;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_DELIMITER;
+import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_LENGTH_INVALID;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_TOO_MANY_ENTRIES;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_TRAILER_EOF;
 import static org.apache.pdfbox.preflight.PreflightConstants.MAX_ARRAY_ELEMENTS;
@@ -84,18 +79,18 @@ import static org.apache.pdfbox.preflight.PreflightConstants.MAX_STRING_LENGTH;
 public class PreflightParser extends PDFParser
 {
     /**
-     * Define a one byte encoding that hasn't specific encoding in UTF-8 charset. Avoid unexpected error when the
-     * encoding is Cp5816
+     * Define a one byte encoding that hasn't specific encoding in UTF-8 charset. Avoid unexpected
+     * error when the encoding is Cp5816
      */
-    public static final Charset encoding = Charset.forName("ISO-8859-1");
+    private static final Charset ENCODING = StandardCharsets.ISO_8859_1;
 
-    protected DataSource dataSource;
+    private Format format = null;
 
-    protected ValidationResult validationResult;
+    private PreflightConfiguration config = null;
 
-    protected PreflightDocument preflightDocument;
+    private PreflightDocument preflightDocument;
 
-    protected PreflightContext ctx;
+    private ValidationResult validationResult;
 
     /**
      * Constructor.
@@ -105,10 +100,7 @@ public class PreflightParser extends PDFParser
      */
     public PreflightParser(File file) throws IOException
     {
-        // TODO move file handling outside of the parser
-        super(new RandomAccessBufferedFileInputStream(file));
-        this.setLenient(false);
-        this.dataSource = new FileDataSource(file);
+        super(new RandomAccessBufferedFile(file));
     }
 
     /**
@@ -120,10 +112,7 @@ public class PreflightParser extends PDFParser
      */
     public PreflightParser(File file, ScratchFile scratch) throws IOException
     {
-        // TODO move file handling outside of the parser
-        super(new RandomAccessBufferedFileInputStream(file), scratch);
-        this.setLenient(false);
-        this.dataSource = new FileDataSource(file);
+        super(new RandomAccessBufferedFile(file), scratch);
     }
 
     /**
@@ -134,7 +123,6 @@ public class PreflightParser extends PDFParser
      */
     public PreflightParser(String filename) throws IOException
     {
-        // TODO move file handling outside of the parser
         this(new File(filename));
     }
 
@@ -147,79 +135,23 @@ public class PreflightParser extends PDFParser
      */
     public PreflightParser(String filename, ScratchFile scratch) throws IOException
     {
-        // TODO move file handling outside of the parser
         this(new File(filename), scratch);
     }
 
     /**
-     * Constructor. This one is slower than the file and the filename constructors, because
-     * a temporary file will be created.
-     *
-     * @param dataSource the datasource
-     * @throws IOException if there is a reading error.
-     */
-    public PreflightParser(DataSource dataSource) throws IOException
-    {
-        // TODO move file handling outside of the parser
-        super(new RandomAccessBufferedFileInputStream(dataSource.getInputStream()));
-        this.setLenient(false);
-        this.dataSource = dataSource;
-    }
-
-    /**
-     * Constructor. This one is slower than the file and the filename constructors, because
-     * a temporary file will be created.
-     *
-     * @param dataSource the datasource
-     * @param scratch
-     * @throws IOException if there is a reading error.
-     */
-    public PreflightParser(DataSource dataSource, ScratchFile scratch) throws IOException
-    {
-        // TODO move file handling outside of the parser
-        super(new RandomAccessBufferedFileInputStream(dataSource.getInputStream()), scratch);
-        this.setLenient(false);
-        this.dataSource = dataSource;
-    }
-
-    /**
-     * Create an instance of ValidationResult with a ValidationError(UNKNOWN_ERROR)
+     * Add a validation error to the ValidationResult.
      * 
-     * @return the ValidationError instance.
+     * @param error the validation error to be added
      */
-    protected static ValidationResult createUnknownErrorResult()
+    private void addValidationError(ValidationError error)
     {
-        ValidationError error = new ValidationError(PreflightConstants.ERROR_UNKOWN_ERROR);
-        return new ValidationResult(error);
-    }
-
-    /**
-     * Add the error to the ValidationResult. If the validationResult is null, an instance is created using the
-     * isWarning boolean of the ValidationError to know if the ValidationResult must be flagged as Valid.
-     * 
-     * @param error
-     */
-    protected void addValidationError(ValidationError error)
-    {
-        if (this.validationResult == null)
-        {
-            this.validationResult = new ValidationResult(error.isWarning());
-        }
-        this.validationResult.addError(error);
-    }
-
-    protected void addValidationErrors(List<ValidationError> errors)
-    {
-        for (ValidationError error : errors)
-        {
-            addValidationError(error);
-        }
+        validationResult.addError(error);
     }
 
     @Override
-    public void parse() throws IOException
+    public PDDocument parse() throws IOException
     {
-        parse(Format.PDF_A1B);
+        return parse(Format.PDF_A1B);
     }
 
     /**
@@ -229,9 +161,9 @@ public class PreflightParser extends PDFParser
      *            format that the document should follow (default {@link Format#PDF_A1B})
      * @throws IOException
      */
-    public void parse(Format format) throws IOException
+    public PDDocument parse(Format format) throws IOException
     {
-        parse(format, null);
+        return parse(format, null);
     }
 
     /**
@@ -244,57 +176,38 @@ public class PreflightParser extends PDFParser
      *            the default configuration.
      * @throws IOException
      */
-    public void parse(Format format, PreflightConfiguration config) throws IOException
+    public PDDocument parse(Format format, PreflightConfiguration config) throws IOException
     {
+        this.format = format == null ? Format.PDF_A1B : format;
+        this.config = config;
+        validationResult = new ValidationResult(true);
+        PDDocument pdDocument = null;
         checkPdfHeader();
         try
         {
-            super.parse();
+            // disable leniency
+            pdDocument = super.parse(false);
         }
         catch (IOException e)
         {
             addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_COMMON, e.getMessage()));
-            throw new SyntaxValidationException(e, this.validationResult);
+            throw new SyntaxValidationException(e, validationResult);
         }
-        finally
-        {
-            // TODO move file handling outside of the parser
-            IOUtils.closeQuietly(source);
-        }
-        Format formatToUse = (format == null ? Format.PDF_A1B : format);
-        createPdfADocument(formatToUse, config);
-        createContext();
-    }
-
-    protected void createPdfADocument(Format format, PreflightConfiguration config) throws IOException
-    {
-        COSDocument cosDocument = getDocument();
-        this.preflightDocument = new PreflightDocument(cosDocument, format, config);
-    }
-
-    /**
-     * Create a validation context. This context is set to the PreflightDocument.
-     */
-    protected void createContext()
-    {
-        this.ctx = new PreflightContext(this.dataSource);
-        ctx.setDocument(preflightDocument);
-        preflightDocument.setContext(ctx);
-        ctx.setXrefTrailerResolver(xrefTrailerResolver);
-        ctx.setFileLen(this.fileLen);
+        // create context
+        PreflightContext context = new PreflightContext();
+        context.setDocument(preflightDocument);
+        preflightDocument.setContext(context);
+        context.setXrefTrailerResolver(xrefTrailerResolver);
+        context.setFileLen(fileLen);
+        preflightDocument.addValidationErrors(validationResult.getErrorsList());
+        return pdDocument;
     }
 
     @Override
-    public PDDocument getPDDocument() throws IOException
+    protected PDDocument createDocument() throws IOException
     {
-        preflightDocument.setResult(validationResult);
-        // Add XMP MetaData
+        preflightDocument = new PreflightDocument(document, format, config);
         return preflightDocument;
-    }
-
-    public PreflightDocument getPreflightDocument() throws IOException
-    {
-        return (PreflightDocument) getPDDocument();
     }
 
     // --------------------------------------------------------
@@ -302,24 +215,19 @@ public class PreflightParser extends PDFParser
     // --------------------------------------------------------
 
     @Override
-    /**
-     * Fill the CosDocument with some object that isn't set by the NonSequentialParser
-     */
     protected void initialParse() throws IOException
     {
         super.initialParse();
-        // For each ObjectKey, we check if the object has been loaded
-        // useful for linearized PDFs
-        Map<COSObjectKey, Long> xrefTable = document.getXrefTable();
-        for (Entry<COSObjectKey, Long> entry : xrefTable.entrySet())
-        {
-            COSObject co = document.getObjectFromPool(entry.getKey());
-            if (co.getObject() == null)
-            {
-                // object isn't loaded - parse the object to load its content
-                parseObjectDynamically(co, true);
-            }
-        }
+        // Dereference each object to trigger parser validation errors
+        Set<COSObjectKey> objectKeys = document.getXrefTable().keySet();
+        objectKeys.forEach(key -> document.getObjectFromPool(key).getObject());
+    }
+
+    @Override
+    protected boolean resetTrailerResolver()
+    {
+        // Don't reset the xref trailer resolver after parsing as it is needed for validation
+        return false;
     }
 
     /**
@@ -327,7 +235,7 @@ public class PreflightParser extends PDFParser
      * be a comment with the PDF version (version 1.0 isn't conform to the PDF/A specification)
      * Second line is a comment with at least 4 bytes greater than 0x80
      */
-    protected void checkPdfHeader()
+    private void checkPdfHeader()
     {
         try
         {
@@ -341,29 +249,20 @@ public class PreflightParser extends PDFParser
             String secondLine = readLine();
             if (secondLine != null)
             {
-                byte[] secondLineAsBytes = secondLine.getBytes(encoding.name());
-                if (secondLineAsBytes.length >= 5)
+                boolean secondLineFails = false;
+                byte[] secondLineAsBytes = secondLine.getBytes(ENCODING);
+                if (secondLineAsBytes.length == 0 || secondLineAsBytes[0] != '%')
                 {
-                    if (secondLineAsBytes[0] != '%')
+                    secondLineFails = true;
+                }
+                else if (secondLine.length() >= 5)
+                {
+                    for (int i = 1; i < 5; ++i)
                     {
-                        addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_HEADER,
-                                "Second line must begin with '%' followed by at least 4 bytes greater than 127"));
-                    }
-                    else
-                    {
-                        for (int i = 1; i < 5; ++i)
-                        {
-                            byte b = secondLineAsBytes[i];
-                            if ((b & 0xFF) < 0x80)
-                            {
-                                addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_HEADER,
-                                        "Second line must begin with '%' followed by at least 4 bytes greater than 127"));
-                                break;
-                            }
-                        }
+                        secondLineFails |= (secondLineAsBytes[i] & 0xFF) < 0x80;
                     }
                 }
-                else
+                if (secondLineFails)
                 {
                     addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_HEADER,
                             "Second line must begin with '%' followed by at least 4 bytes greater than 127"));
@@ -498,7 +397,7 @@ public class PreflightParser extends PDFParser
 
     /**
      * Wraps the {@link PDFParser#parseCOSStream} to check rules on 'stream' and 'endstream'
-     * keywords. {@link #checkStreamKeyWord()} and {@link #checkEndstreamKeyWord()}
+     * keywords. {@link #checkStreamKeyWord()} and {@link #checkEndstreamKeyWord(org.apache.pdfbox.cos.COSDictionary, long)}
      *
      * @param dic dictionary that goes with this stream.
      *
@@ -510,9 +409,9 @@ public class PreflightParser extends PDFParser
     @Override
     protected COSStream parseCOSStream(COSDictionary dic) throws IOException
     {
-        checkStreamKeyWord();
+        long startOffset = checkStreamKeyWord();
         COSStream result = super.parseCOSStream(dic);
-        checkEndstreamKeyWord();
+        checkEndstreamKeyWord(dic, startOffset);
         return result;
     }
 
@@ -521,7 +420,7 @@ public class PreflightParser extends PDFParser
      * 
      * @throws IOException
      */
-    protected void checkStreamKeyWord() throws IOException
+    private long checkStreamKeyWord() throws IOException
     {
         String streamV = readString();
         if (!streamV.equals("stream"))
@@ -529,14 +428,24 @@ public class PreflightParser extends PDFParser
             addValidationError(new ValidationError(ERROR_SYNTAX_STREAM_DELIMITER,
                     "Expected 'stream' keyword but found '" + streamV + "' at offset "+source.getPosition()));
         }
+        long startOffset = source.getPosition();
         int nextChar = source.read();
-        if (!((nextChar == 13 && source.peek() == 10) || nextChar == 10))
+        if (nextChar == ASCII_CR && source.peek() == ASCII_LF)
+        {
+            startOffset += 2;
+        }
+        else if (nextChar == ASCII_LF)
+        {
+            startOffset++;
+        }
+        else
         {
             addValidationError(new ValidationError(ERROR_SYNTAX_STREAM_DELIMITER,
                     "Expected 'EOL' after the stream keyword at offset "+source.getPosition()));
         }
         // set the offset before stream
         source.seek(source.getPosition() - 7);
+        return startOffset;
     }
 
     /**
@@ -544,19 +453,52 @@ public class PreflightParser extends PDFParser
      * 
      * @throws IOException
      */
-    protected void checkEndstreamKeyWord() throws IOException
+    private void checkEndstreamKeyWord(COSDictionary dic, long startOffset)
+            throws IOException
     {
         source.seek(source.getPosition() - 10);
-        if (!nextIsEOL())
+        long endOffset = source.getPosition();
+        int nextChar = source.read();
+        boolean eolFound = false;
+        boolean crlfFound = false;
+        // LF found
+        if (nextChar == ASCII_LF)
+        {
+            eolFound = true;
+            // check if the LF is part of a CRLF
+            source.rewind(2);
+            if (source.read() == ASCII_CR)
+            {
+                endOffset--;
+                crlfFound = true;
+            }
+            source.read();
+        }
+        boolean addStreamLengthErrorMessage = false;
+        long actualLength = endOffset - startOffset;
+        if (!eolFound)
         {
             addValidationError(new ValidationError(ERROR_SYNTAX_STREAM_DELIMITER,
                     "Expected 'EOL' before the endstream keyword at offset "+source.getPosition()+" but found '"+source.peek()+"'"));
+            addStreamLengthErrorMessage = true;
         }
         String endstreamV = readString();
         if (!endstreamV.equals("endstream"))
         {
             addValidationError(new ValidationError(ERROR_SYNTAX_STREAM_DELIMITER,
                     "Expected 'endstream' keyword at offset "+source.getPosition()+" but found '" + endstreamV + "'"));
+            addStreamLengthErrorMessage = true;
+        }
+
+        int length = dic.getInt(COSName.LENGTH);
+        if (addStreamLengthErrorMessage || //
+                (length > -1 && ((!crlfFound && length - actualLength != 0)
+                        || (crlfFound && length - actualLength > 1))))
+        {
+            addValidationError(new ValidationError(ERROR_SYNTAX_STREAM_LENGTH_INVALID,
+                    "Stream length is invalid [dic=" + dic + "; defined length=" + length
+                            + "; actual length=" + actualLength + ", starting offset="
+                            + startOffset));
         }
     }
 
@@ -625,13 +567,8 @@ public class PreflightParser extends PDFParser
             do
             {
                 nextChar = (char) source.read();
-                if (nextChar != '>')
+                if (!isWhitespace(nextChar) && nextChar != '>')
                 {
-                    if (isWhitespace(nextChar))
-                    {
-                        // ignore space characters
-                        continue;
-                    }
                     if (Character.digit(nextChar, 16) >= 0)
                     {
                         count++;
@@ -681,7 +618,7 @@ public class PreflightParser extends PDFParser
             COSNumber number = (COSNumber) result;
             if (number instanceof COSFloat)
             {
-                Double real = number.doubleValue();
+                float real = number.floatValue();
                 if (real > MAX_POSITIVE_FLOAT || real < MAX_NEGATIVE_FLOAT)
                 {
                     addValidationError(new ValidationError(ERROR_SYNTAX_NUMERIC_RANGE,
@@ -711,17 +648,19 @@ public class PreflightParser extends PDFParser
     }
 
     @Override
-    protected COSBase parseObjectDynamically(long objNr, int objGenNr, boolean requireExistingNotCompressedObj)
+    protected synchronized COSBase parseObjectDynamically(long objNr, int objGenNr,
+            boolean requireExistingNotCompressedObj)
             throws IOException
     {
         // ---- create object key and get object (container) from pool
         final COSObjectKey objKey = new COSObjectKey(objNr, objGenNr);
         final COSObject pdfObject = document.getObjectFromPool(objKey);
+        COSBase referencedObject = !pdfObject.isObjectNull() ? pdfObject.getObject() : null;
 
-        if (pdfObject.getObject() == null)
+        // not previously parsed
+        if (referencedObject == null)
         {
-            // not previously parsed
-            // ---- read offset or object stream object number from xref table
+            // read offset or object stream object number from xref table
             Long offsetOrObjstmObNr = document.getXrefTable().get(objKey);
 
             // sanity test to circumvent loops with broken documents
@@ -731,13 +670,16 @@ public class PreflightParser extends PDFParser
                         "Object must be defined and must not be compressed object: " + objKey.getNumber() + ":"
                                 + objKey.getGeneration()));
                 throw new SyntaxValidationException("Object must be defined and must not be compressed object: "
-                        + objKey.getNumber() + ":" + objKey.getGeneration(), validationResult);
+                                + objKey.getNumber() + ":" + objKey.getGeneration(),
+                        validationResult);
             }
 
             if (offsetOrObjstmObNr == null)
             {
                 // not defined object -> NULL object (Spec. 1.7, chap. 3.2.9)
-                pdfObject.setObject(COSNull.NULL);
+                // remove parser to avoid endless recursion
+                pdfObject.setToNull();
+
             }
             else if (offsetOrObjstmObNr == 0)
             {
@@ -747,149 +689,144 @@ public class PreflightParser extends PDFParser
             else if (offsetOrObjstmObNr > 0)
             {
                 // offset of indirect object in file
-                // ---- go to object start
-                source.seek(offsetOrObjstmObNr);
-                // ---- we must have an indirect object
-                long readObjNr;
-                int readObjGen;
-
-                long offset = source.getPosition();
-                String line = readLine();
-                Pattern pattern = Pattern.compile("(\\d+)\\s(\\d+)\\sobj");
-                Matcher matcher = pattern.matcher(line);
-                if (matcher.matches())
-                {
-                    readObjNr = Long.parseLong(matcher.group(1));
-                    readObjGen = Integer.parseInt(matcher.group(2));
-                }
-                else
-                {
-
-                    addValidationError(new ValidationError(ERROR_SYNTAX_OBJ_DELIMITER, "Single space expected [offset="+offset+"; key="+offsetOrObjstmObNr.toString()+"; line="+line+"; object="+pdfObject.toString()+"]"));
-
-                    // reset source cursor to read object information
-                    source.seek(offset);
-                    readObjNr = readObjectNumber();
-                    readObjGen = readGenerationNumber();
-                    skipSpaces(); // skip spaces between Object Generation number and the 'obj' keyword 
-                    for (char c : OBJ_MARKER)
-                    {
-                        if (source.read() != c)
-                        {
-                            addValidationError(new ValidationError(ERROR_SYNTAX_OBJ_DELIMITER, "Expected pattern '"
-                                    + new String(OBJ_MARKER) + " but missed at character '" + c + "'"));
-                            throw new SyntaxValidationException("Expected pattern '" + new String(OBJ_MARKER)
-                                    + " but missed at character '" + c + "'", validationResult);
-                        }
-                    }
-                }
-
-                // ---- consistency check
-                if ((readObjNr != objKey.getNumber()) || (readObjGen != objKey.getGeneration()))
-                {
-                    throw new IOException("XREF for " + objKey.getNumber() + ":" + objKey.getGeneration()
-                            + " points to wrong object: " + readObjNr + ":" + readObjGen);
-                }
-
-                skipSpaces();
-                COSBase pb = parseDirObject();
-                skipSpaces();
-                long endObjectOffset = source.getPosition();
-                String endObjectKey = readString();
-
-                if (endObjectKey.equals("stream"))
-                {
-                    source.seek(endObjectOffset);
-                    if (pb instanceof COSDictionary)
-                    {
-                        COSStream stream = parseCOSStream((COSDictionary) pb);
-                        if (securityHandler != null)
-                        {
-                            securityHandler.decryptStream(stream, objNr, objGenNr);
-                        }
-                        pb = stream;
-                    }
-                    else
-                    {
-                        // this is not legal
-                        // the combination of a dict and the stream/endstream forms a complete stream object
-                        throw new IOException("Stream not preceded by dictionary (offset: " + offsetOrObjstmObNr + ").");
-                    }
-                    skipSpaces();
-                    endObjectOffset = source.getPosition();
-                    endObjectKey = readString();
-
-                    // we have case with a second 'endstream' before endobj
-                    if (!endObjectKey.startsWith("endobj"))
-                    {
-                        if (endObjectKey.startsWith("endstream"))
-                        {
-                            endObjectKey = endObjectKey.substring(9).trim();
-                            if (endObjectKey.length() == 0)
-                            {
-                                // no other characters in extra endstream line
-                                endObjectKey = readString(); // read next line
-                            }
-                        }
-                    }
-                }
-                else if (securityHandler != null)
-                {
-                    securityHandler.decrypt(pb, objNr, objGenNr);
-                }
-
-                pdfObject.setObject(pb);
-
-                if (!endObjectKey.startsWith("endobj"))
-                {
-                    throw new IOException("Object (" + readObjNr + ":" + readObjGen + ") at offset "
-                            + offsetOrObjstmObNr + " does not end with 'endobj'.");
-                }
-                else
-                {
-                    offset = source.getPosition();
-                    source.seek(endObjectOffset - 1);
-                    if (!nextIsEOL())
-                    {
-                        addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_OBJ_DELIMITER,
-                                "EOL expected before the 'endobj' keyword at offset "+source.getPosition()));
-                    }
-                    source.seek(offset);
-                }
-
-                if (!nextIsEOL())
-                {
-                    addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_OBJ_DELIMITER,
-                            "EOL expected after the 'endobj' keyword at offset "+source.getPosition()));
-                }
+                referencedObject = parseFileObject(offsetOrObjstmObNr, objKey);
             }
             else
             {
-                // xref value is object nr of object stream containing object to be parsed;
+                // xref value is object nr of object stream containing object to be parsed
                 // since our object was not found it means object stream was not parsed so far
-                final int objstmObjNr = (int) (-offsetOrObjstmObNr);
-                final COSBase objstmBaseObj = parseObjectDynamically(objstmObjNr, 0, true);
-                if (objstmBaseObj instanceof COSStream)
-                {
-                    // parse object stream
-                    PDFObjectStreamParser parser = new PDFObjectStreamParser((COSStream) objstmBaseObj, document);
-                    parser.parse();
+                referencedObject = parseObjectStreamObject((int) -offsetOrObjstmObNr, objKey);
+            }
+            if (referencedObject == null || referencedObject instanceof COSNull)
+            {
+                pdfObject.setToNull();
+            }
+        }
+        return referencedObject;
+    }
 
-                    // register all objects which are referenced to be contained in object stream
-                    for (COSObject next : parser.getObjects())
-                    {
-                        COSObjectKey stmObjKey = new COSObjectKey(next);
-                        Long offset = document.getXrefTable().get(stmObjKey);
-                        if (offset != null && offset == -objstmObjNr)
-                        {
-                            COSObject stmObj = document.getObjectFromPool(stmObjKey);
-                            stmObj.setObject(next.getObject());
-                        }
-                    }
+    private COSBase parseFileObject(Long offsetOrObjstmObNr, final COSObjectKey objKey)
+            throws IOException
+    {
+        // offset of indirect object in file
+        // ---- go to object start
+        source.seek(offsetOrObjstmObNr);
+        // ---- we must have an indirect object
+        long readObjNr;
+        int readObjGen;
+
+        long offset = source.getPosition();
+        String line = readLine();
+        Pattern pattern = Pattern.compile("(\\d+)\\s(\\d+)\\sobj");
+        Matcher matcher = pattern.matcher(line);
+        if (matcher.matches())
+        {
+            readObjNr = Long.parseLong(matcher.group(1));
+            readObjGen = Integer.parseInt(matcher.group(2));
+        }
+        else
+        {
+
+            addValidationError(new ValidationError(ERROR_SYNTAX_OBJ_DELIMITER,
+                    "Single space expected [offset=" + offset + "; key="
+                            + offsetOrObjstmObNr.toString() + "; line=" + line + "; object="
+                            + objKey.getNumber() + " " + objKey.getGeneration() + "]"));
+
+            // reset source cursor to read object information
+            source.seek(offset);
+            readObjNr = readObjectNumber();
+            readObjGen = readGenerationNumber();
+            skipSpaces(); // skip spaces between Object Generation number and the 'obj' keyword
+            for (char c : OBJ_MARKER)
+            {
+                if (source.read() != c)
+                {
+                    addValidationError(new ValidationError(ERROR_SYNTAX_OBJ_DELIMITER,
+                            "Expected pattern '" + new String(OBJ_MARKER)
+                                    + " but missed at character '" + c + "'"));
+                    throw new SyntaxValidationException("Expected pattern '"
+                            + new String(OBJ_MARKER) + " but missed at character '" + c + "'",
+                            validationResult);
                 }
             }
         }
-        return pdfObject.getObject();
+
+        // ---- consistency check
+        if ((readObjNr != objKey.getNumber()) || (readObjGen != objKey.getGeneration()))
+        {
+            throw new IOException("XREF for " + objKey.getNumber() + ":" + objKey.getGeneration()
+                    + " points to wrong object: " + readObjNr + ":" + readObjGen);
+        }
+
+        skipSpaces();
+        COSBase referencedObject = parseDirObject();
+        skipSpaces();
+        long endObjectOffset = source.getPosition();
+        String endObjectKey = readString();
+
+        if (endObjectKey.equals("stream"))
+        {
+            source.seek(endObjectOffset);
+            if (referencedObject instanceof COSDictionary)
+            {
+                COSStream stream = parseCOSStream((COSDictionary) referencedObject);
+                if (securityHandler != null)
+                {
+                    securityHandler.decryptStream(stream, readObjNr, readObjGen);
+                }
+                referencedObject = stream;
+            }
+            else
+            {
+                // this is not legal
+                // the combination of a dict and the stream/endstream forms a complete stream object
+                throw new IOException(
+                        "Stream not preceded by dictionary (offset: " + offsetOrObjstmObNr + ").");
+            }
+            skipSpaces();
+            endObjectOffset = source.getPosition();
+            endObjectKey = readString();
+
+            // we have case with a second 'endstream' before endobj
+            if (!endObjectKey.startsWith("endobj") && endObjectKey.startsWith("endstream"))
+            {
+                endObjectKey = endObjectKey.substring(9).trim();
+                if (endObjectKey.length() == 0)
+                {
+                    // no other characters in extra endstream line
+                    endObjectKey = readString(); // read next line
+                }
+            }
+        }
+        else if (securityHandler != null)
+        {
+            securityHandler.decrypt(referencedObject, readObjNr, readObjGen);
+        }
+        if (!endObjectKey.startsWith("endobj"))
+        {
+            throw new IOException("Object (" + readObjNr + ":" + readObjGen + ") at offset "
+                    + offsetOrObjstmObNr + " does not end with 'endobj'.");
+        }
+        else
+        {
+            offset = source.getPosition();
+            source.seek(endObjectOffset - 1);
+            if (!nextIsEOL())
+            {
+                addValidationError(
+                        new ValidationError(PreflightConstants.ERROR_SYNTAX_OBJ_DELIMITER,
+                                "EOL expected before the 'endobj' keyword at offset "
+                                        + source.getPosition()));
+            }
+            source.seek(offset);
+        }
+
+        if (!nextIsEOL())
+        {
+            addValidationError(new ValidationError(PreflightConstants.ERROR_SYNTAX_OBJ_DELIMITER,
+                    "EOL expected after the 'endobj' keyword at offset " + source.getPosition()));
+        }
+        return referencedObject;
     }
 
     @Override
@@ -901,27 +838,49 @@ public class PreflightParser extends PDFParser
             // this is the offset of the last %%EOF sequence.
             // nothing should be present after this sequence.
             int tmpOffset = offset + pattern.length;
-            if (tmpOffset != buf.length)
+            int offsetDiff = buf.length - tmpOffset;
+            // EOL is authorized
+            if (offsetDiff > 2
+                    || (offsetDiff == 2
+                            && (buf[tmpOffset] != ASCII_CR || buf[tmpOffset + 1] != ASCII_LF))
+                    || (offsetDiff == 1
+                            && (buf[tmpOffset] != ASCII_CR && buf[tmpOffset] != ASCII_LF)))
             {
-                // EOL is authorized
-                if ((buf.length - tmpOffset) > 2
-                        || (buf.length - tmpOffset == 2 && (buf[tmpOffset] != 13 || buf[tmpOffset + 1] != 10))
-                        || (buf.length - tmpOffset == 1 && (buf[tmpOffset] != 13 && buf[tmpOffset] != 10)))
+                long position;
+                try
                 {
-                    long position;
-                    try
-                    {
-                        position = source.getPosition();
-                    }
-                    catch(IOException excpetion)
-                    {
-                        position = Long.MIN_VALUE;
-                    }
-                    addValidationError(new ValidationError(ERROR_SYNTAX_TRAILER_EOF,
-                            "File contains data after the last %%EOF sequence at offset " + position));
+                    position = source.getPosition();
                 }
+                catch (IOException ex)
+                {
+                    position = Long.MIN_VALUE;
+                }
+                addValidationError(new ValidationError(ERROR_SYNTAX_TRAILER_EOF,
+                        "File contains data after the last %%EOF sequence at offset " + position));
             }
         }
         return offset;
+    }
+
+    /**
+     * Load and validate the given file. Returns the validation result and closes the read pdf.
+     * 
+     * @param file thew file to be read and validated
+     * @return the validation result
+     * @throws IOException in case of a file reading or parsing error
+     */
+    public static ValidationResult validate(File file) throws IOException
+    {
+        ValidationResult result;
+        PreflightParser parser = new PreflightParser(file);
+        try (PreflightDocument document = (PreflightDocument) parser.parse())
+        {
+            result = document.validate();
+        }
+        catch (SyntaxValidationException e)
+        {
+            result = e.getResult();
+        }
+        return result;
     }
 }

@@ -18,6 +18,9 @@ package org.apache.pdfbox.cos;
 
 import java.io.IOException;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 /**
  * This class represents a PDF object.
  *
@@ -30,6 +33,9 @@ public class COSObject extends COSBase implements COSUpdateInfo
     private long objectNumber;
     private int generationNumber;
     private boolean needToBeUpdated;
+    private ICOSParser parser;
+
+    private static final Log LOG = LogFactory.getLog(COSObject.class);
 
     /**
      * Constructor.
@@ -39,42 +45,44 @@ public class COSObject extends COSBase implements COSUpdateInfo
      */
     public COSObject(COSBase object)
     {
-        setObject( object );
+        this(object, null);
     }
 
     /**
-     * This will get the dictionary object in this object that has the name key and
-     * if it is a pdfobjref then it will dereference that and return it.
+     * Constructor.
      *
-     * @param key The key to the value that we are searching for.
+     * @param object The object that this encapsulates.
+     * @param parser The parser to be used to load the object on demand
      *
-     * @return The pdf object that matches the key.
      */
-    public COSBase getDictionaryObject( COSName key )
+    public COSObject(COSBase object, ICOSParser parser)
     {
-        COSBase retval =null;
-        if( baseObject instanceof COSDictionary )
-        {
-            retval = ((COSDictionary)baseObject).getDictionaryObject( key );
-        }
-        return retval;
+        baseObject = object;
+        this.parser = parser;
     }
 
     /**
-     * This will get the dictionary object in this object that has the name key.
+     * Constructor.
      *
-     * @param key The key to the value that we are searching for.
+     * @param key The object number of the encapsulated object.
+     * @param parser The parser to be used to load the object on demand
      *
-     * @return The pdf object that matches the key.
      */
-    public COSBase getItem( COSName key )
+    public COSObject(COSObjectKey key, ICOSParser parser)
     {
-        COSBase retval =null;
-        if( baseObject instanceof COSDictionary )
-        {
-            retval = ((COSDictionary)baseObject).getItem( key );
-        }
-        return retval;
+        this.parser = parser;
+        objectNumber = key.getNumber();
+        generationNumber = key.getGeneration();
+    }
+
+    /**
+     * Indicates if the referenced object is present or not.
+     * 
+     * @return true if the indirect object is dereferenced
+     */
+    public boolean isObjectNull()
+    {
+        return baseObject == null;
     }
 
     /**
@@ -84,17 +92,31 @@ public class COSObject extends COSBase implements COSUpdateInfo
      */
     public COSBase getObject()
     {
+        if ((baseObject == null || baseObject instanceof COSNull) && parser != null)
+        {
+            try
+            {
+                baseObject = parser.dereferenceCOSObject(this);
+                if (baseObject != null)
+                {
+                    // remove parser to avoid endless recursions
+                    parser = null;
+                }
+            }
+            catch (IOException e)
+            {
+                // remove parser to avoid endless recursions
+                parser = null;
+                LOG.error("Can't dereference " + this, e);
+            }
+        }
         return baseObject;
     }
 
-    /**
-     * This will set the object that this object encapsulates.
-     *
-     * @param object The new object to encapsulate.
-     */
-    public final void setObject(COSBase object)
+    public final void setToNull()
     {
-        baseObject = object;
+        baseObject = COSNull.NULL;
+        parser = null;
     }
 
     /**
@@ -116,30 +138,12 @@ public class COSObject extends COSBase implements COSUpdateInfo
     }
 
     /** 
-     * Setter for property objectNumber.
-     * @param objectNum New value of property objectNumber.
-     */
-    public void setObjectNumber(long objectNum)
-    {
-        objectNumber = objectNum;
-    }
-
-    /** 
      * Getter for property generationNumber.
      * @return Value of property generationNumber.
      */
     public int getGenerationNumber()
     {
         return generationNumber;
-    }
-
-    /** 
-     * Setter for property generationNumber.
-     * @param generationNumberValue New value of property generationNumber.
-     */
-    public void setGenerationNumber(int generationNumberValue)
-    {
-        generationNumber = generationNumberValue;
     }
 
     /**

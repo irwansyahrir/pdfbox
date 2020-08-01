@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.apache.pdfbox.cos.COSArray;
@@ -140,51 +141,6 @@ public class PDStream implements COSObjectable
     }
 
     /**
-     * If there are not compression filters on the current stream then this will
-     * add a compression filter, flate compression for example.
-     * 
-     * @deprecated This method is inefficient. To copying an existing InputStream, use
-     *             {@link #PDStream(PDDocument, InputStream, COSName)} instead, with
-     *             COSName.FLATE_DECODE as the final argument.
-     *             
-     *             Otherwise, to write new compressed data, use {@link #createOutputStream(COSName)},
-     *             with COSName.FLATE_DECODE as the argument.
-     */
-    @Deprecated
-    public void addCompression()
-    {
-        List<COSName> filters = getFilters();
-        if (filters == null)
-        {
-            if (stream.getLength() > 0)
-            {
-                OutputStream out = null;
-                try
-                {
-                    byte[] bytes = IOUtils.toByteArray(stream.createInputStream());
-                    out = stream.createOutputStream(COSName.FLATE_DECODE);
-                    out.write(bytes);
-                }
-                catch (IOException e)
-                {
-                    // not much else we can do here without breaking the existing API, sorry.
-                    throw new RuntimeException(e);
-                }
-                finally
-                {
-                    IOUtils.closeQuietly(out);
-                }
-            }
-            else
-            {
-                filters = new ArrayList<>();
-                filters.add(COSName.FLATE_DECODE);
-                setFilters(filters);
-            }
-        }
-    }
-
-    /**
      * Get the cos stream associated with this object.
      *
      * @return The cos object that matches this Java object.
@@ -284,13 +240,12 @@ public class PDStream implements COSObjectable
 
     /**
      * This will get the list of filters that are associated with this stream.
-     * Or null if there are none.
      * 
-     * @return A list of all encoding filters to apply to this stream.
+     * @return A (possibly empty) list of all encoding filters to apply to this stream, never null.
      */
     public List<COSName> getFilters()
     {
-        List<COSName> retval = null;
+        List<COSName> retval = Collections.emptyList();
         COSBase filters = stream.getFilters();
         if (filters instanceof COSName)
         {
@@ -335,10 +290,8 @@ public class PDStream implements COSObjectable
         }
         if (dp instanceof COSDictionary)
         {
-            Map<?, ?> map = COSDictionaryMap
-                    .convertBasicTypesToMap((COSDictionary) dp);
-            retval = new COSArrayList<Object>(map, dp, stream,
-                    COSName.DECODE_PARMS);
+            Map<?, ?> map = COSDictionaryMap.convertBasicTypesToMap((COSDictionary) dp);
+            retval = new COSArrayList<>(map, dp, stream, COSName.DECODE_PARMS);
         } 
         else if (dp instanceof COSArray)
         {
@@ -439,10 +392,8 @@ public class PDStream implements COSObjectable
         COSBase dp = stream.getDictionaryObject(COSName.F_DECODE_PARMS);
         if (dp instanceof COSDictionary)
         {
-            Map<?, ?> map = COSDictionaryMap
-                    .convertBasicTypesToMap((COSDictionary) dp);
-            retval = new COSArrayList<Object>(map, dp, stream,
-                    COSName.F_DECODE_PARMS);
+            Map<?, ?> map = COSDictionaryMap.convertBasicTypesToMap((COSDictionary) dp);
+            retval = new COSArrayList<>(map, dp, stream, COSName.F_DECODE_PARMS);
         } 
         else if (dp instanceof COSArray)
         {

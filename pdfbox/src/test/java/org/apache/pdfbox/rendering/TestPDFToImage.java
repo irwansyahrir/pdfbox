@@ -30,8 +30,10 @@ import java.util.List;
 import javax.imageio.ImageIO;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.ParallelParameterized;
 import org.apache.pdfbox.pdmodel.PDDocument;
+
 import static org.junit.Assert.fail;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -151,13 +153,13 @@ public class TestPDFToImage
 
     /**
      * Get the difference between two images, identical colors are set to white, differences are
-     * xored, the highest bit of each color is reset to avoid colors that are too light
+     * xored, the highest bit of each color is reset to avoid colors that are too light.
      *
      * @param bim1
      * @param bim2
-     * @return If the images are different, the function returns a diff image If the images are
-     * identical, the function returns null If the size is different, a black border on the botton
-     * and the right is created
+     * @return If the images are different, the function returns a diff image. If the images are
+     * identical, the function returns null. If the size is different, a black border on the bottom
+     * at the right is created.
      *
      * @throws IOException
      */
@@ -224,7 +226,7 @@ public class TestPDFToImage
         try
         {
             new FileOutputStream(new File(outDir, file.getName() + ".parseerror")).close();
-            document = PDDocument.load(file, (String)null);
+            document = Loader.loadPDF(file, (String) null);
             String outputPrefix = outDir + '/' + file.getName() + "-";
             int numPages = document.getNumberOfPages();
             if (numPages < 1)
@@ -258,7 +260,7 @@ public class TestPDFToImage
             document.save(tmpFile);
             new File(outDir, file.getName() + ".saveerror").delete();
             new FileOutputStream(new File(outDir, file.getName() + ".reloaderror")).close();
-            PDDocument.load(tmpFile, (String)null).close();
+            Loader.loadPDF(tmpFile, (String) null).close();
             new File(outDir, file.getName() + ".reloaderror").delete();
             tmpFile.delete();
         }
@@ -325,6 +327,7 @@ public class TestPDFToImage
                         LOG.info("*** TEST OK *** for file: " + inFile.getName());
                         LOG.info("Deleting: " + outFile.getName());
                         outFile.delete();
+                        outFile.deleteOnExit();
                     }
                 }
                 else
@@ -332,6 +335,7 @@ public class TestPDFToImage
                     LOG.info("*** TEST OK *** for file: " + inFile.getName());
                     LOG.info("Deleting: " + outFile.getName());
                     outFile.delete();
+                    outFile.deleteOnExit();
                 }
             }
         }

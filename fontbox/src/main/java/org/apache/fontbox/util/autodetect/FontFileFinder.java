@@ -19,6 +19,7 @@ package org.apache.fontbox.util.autodetect;
 
 import java.io.File;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.apache.commons.logging.Log;
@@ -74,11 +75,8 @@ public class FontFileFinder
             fontDirFinder = determineDirFinder();
         }
         List<File> fontDirs = fontDirFinder.find();
-        List<URI> results = new java.util.ArrayList<>();
-        for (File dir : fontDirs)
-        {
-            walk(dir, results);
-        }
+        List<URI> results = new ArrayList<>();
+        fontDirs.forEach(dir -> walk(dir, results));
         return results;
     }
 
@@ -90,7 +88,7 @@ public class FontFileFinder
      */
     public List<URI> find(String dir)
     {
-        List<URI> results = new java.util.ArrayList<>();
+        List<URI> results = new ArrayList<>();
         File directory = new File(dir);
         if (directory.isDirectory())
         {
@@ -108,37 +106,39 @@ public class FontFileFinder
     private void walk(File directory, List<URI> results)
     {
         // search for font files recursively in the given directory
-        if (directory.isDirectory())
+        if (!directory.isDirectory())
         {
-            File[] filelist = directory.listFiles();
-            if (filelist != null)
+            return;
+        }
+        File[] filelist = directory.listFiles();
+        if (filelist == null)
+        {
+            return;
+        }
+        for (File file : filelist)
+        {
+            if (file.isDirectory())
             {
-                for (File file : filelist)
+                // skip hidden directories
+                if (file.getName().startsWith("."))
                 {
-                    if (file.isDirectory())
+                    continue;
+                }
+                walk(file, results);
+            }
+            else
+            {
+                if (LOG.isDebugEnabled())
+                {
+                    LOG.debug("checkFontfile check " + file);
+                }
+                if (checkFontfile(file))
+                {
+                    if (LOG.isDebugEnabled())
                     {
-                        // skip hidden directories
-                        if (file.getName().startsWith("."))
-                        {
-                            continue;
-                        }
-                        walk(file, results);
+                        LOG.debug("checkFontfile found " + file);
                     }
-                    else
-                    {
-                        if (LOG.isDebugEnabled())
-                        {
-                            LOG.debug("checkFontfile check " + file);
-                        }
-                        if (checkFontfile(file))
-                        {
-                            if (LOG.isDebugEnabled())
-                            {
-                                LOG.debug("checkFontfile found " + file);
-                            }
-                            results.add(file.toURI());
-                        }
-                    }
+                    results.add(file.toURI());
                 }
             }
         }

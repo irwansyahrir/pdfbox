@@ -16,6 +16,7 @@
  */
 package org.apache.pdfbox.examples.pdmodel;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
@@ -31,6 +32,7 @@ import org.apache.xmpbox.XMPMetadata;
 import org.apache.xmpbox.schema.AdobePDFSchema;
 import org.apache.xmpbox.schema.DublinCoreSchema;
 import org.apache.xmpbox.schema.XMPBasicSchema;
+import org.apache.xmpbox.type.BadFieldValueException;
 import org.apache.xmpbox.xml.DomXmpParser;
 import org.apache.xmpbox.xml.XmpParsingException;
 
@@ -52,8 +54,9 @@ public final class ExtractMetadata
      *
      * @throws IOException If there is an error parsing the document.
      * @throws XmpParsingException
+     * @throws BadFieldValueException
      */
-    public static void main(String[] args) throws IOException, XmpParsingException
+    public static void main(String[] args) throws IOException, XmpParsingException, BadFieldValueException
     {
         if (args.length != 1)
         {
@@ -62,7 +65,7 @@ public final class ExtractMetadata
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 PDDocumentCatalog catalog = document.getDocumentCatalog();
                 PDMetadata meta = catalog.getMetadata();
@@ -71,33 +74,11 @@ public final class ExtractMetadata
                     DomXmpParser xmpParser = new DomXmpParser();
                     try
                     {
-                        XMPMetadata metadata = xmpParser.parse(meta.createInputStream());
+                        XMPMetadata metadata = xmpParser.parse(meta.toByteArray());
 
-                        DublinCoreSchema dc = metadata.getDublinCoreSchema();
-                        if (dc != null)
-                        {
-                            display("Title:", dc.getTitle());
-                            display("Description:", dc.getDescription());
-                            listString("Creators: ", dc.getCreators());
-                            listCalendar("Dates:", dc.getDates());
-                            listString("Subjects:", dc.getSubjects());
-                        }
-
-                        AdobePDFSchema pdf = metadata.getAdobePDFSchema();
-                        if (pdf != null)
-                        {
-                            display("Keywords:", pdf.getKeywords());
-                            display("PDF Version:", pdf.getPDFVersion());
-                            display("PDF Producer:", pdf.getProducer());
-                        }
-
-                        XMPBasicSchema basic = metadata.getXMPBasicSchema();
-                        if (basic != null)
-                        {
-                            display("Create Date:", basic.getCreateDate());
-                            display("Modify Date:", basic.getModifyDate());
-                            display("Creator Tool:", basic.getCreatorTool());
-                        }
+                        showDublinCoreSchema(metadata);
+                        showAdobePDFSchema(metadata);
+                        showXMPBasicSchema(metadata);
                     }
                     catch (XmpParsingException e)
                     {
@@ -116,6 +97,41 @@ public final class ExtractMetadata
                     }
                 }
             }
+        }
+    }
+
+    private static void showXMPBasicSchema(XMPMetadata metadata)
+    {
+        XMPBasicSchema basic = metadata.getXMPBasicSchema();
+        if (basic != null)
+        {
+            display("Create Date:", basic.getCreateDate());
+            display("Modify Date:", basic.getModifyDate());
+            display("Creator Tool:", basic.getCreatorTool());
+        }
+    }
+
+    private static void showAdobePDFSchema(XMPMetadata metadata)
+    {
+        AdobePDFSchema pdf = metadata.getAdobePDFSchema();
+        if (pdf != null)
+        {
+            display("Keywords:", pdf.getKeywords());
+            display("PDF Version:", pdf.getPDFVersion());
+            display("PDF Producer:", pdf.getProducer());
+        }
+    }
+
+    private static void showDublinCoreSchema(XMPMetadata metadata) throws BadFieldValueException
+    {
+        DublinCoreSchema dc = metadata.getDublinCoreSchema();
+        if (dc != null)
+        {
+            display("Title:", dc.getTitle());
+            display("Description:", dc.getDescription());
+            listString("Creators: ", dc.getCreators());
+            listCalendar("Dates:", dc.getDates());
+            listString("Subjects:", dc.getSubjects());
         }
     }
 

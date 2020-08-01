@@ -27,9 +27,9 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.filter.Filter;
 import org.apache.pdfbox.filter.FilterFactory;
-import org.apache.pdfbox.io.RandomAccess;
-import org.apache.pdfbox.io.RandomAccessBuffer;
-import org.apache.pdfbox.io.RandomAccessFile;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
+import org.apache.pdfbox.io.RandomAccessReadMemoryMappedFile;
+import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
@@ -127,7 +127,7 @@ public final class CCITTFactory
     public static PDImageXObject createFromByteArray(PDDocument document, byte[] byteArray, int number)
             throws IOException
     {
-        try (RandomAccess raf = new RandomAccessBuffer(byteArray))
+        try (RandomAccessRead raf = new RandomAccessReadBuffer(byteArray))
         {
             return createFromRandomAccessImpl(document, raf, number);
         }
@@ -189,7 +189,7 @@ public final class CCITTFactory
     public static PDImageXObject createFromFile(PDDocument document, File file, int number)
             throws IOException
     {
-        try (RandomAccessFile raf = new RandomAccessFile(file, "r"))
+        try (RandomAccessRead raf = new RandomAccessReadMemoryMappedFile(file))
         {
             return createFromRandomAccessImpl(document, raf, number);
         }
@@ -206,7 +206,7 @@ public final class CCITTFactory
      * @throws IOException if there is an error reading the TIFF data.
      */
     private static PDImageXObject createFromRandomAccessImpl(PDDocument document,
-                                                             RandomAccess reader,
+            RandomAccessRead reader,
                                                              int number) throws IOException
     {
         COSDictionary decodeParms = new COSDictionary();
@@ -231,7 +231,8 @@ public final class CCITTFactory
     }
 
     // extracts the CCITT stream from the TIFF file
-    private static void extractFromTiff(RandomAccess reader, OutputStream os,
+    private static void extractFromTiff(RandomAccessRead reader,
+            OutputStream os,
             COSDictionary params, int number) throws IOException
     {
         try
@@ -278,7 +279,7 @@ public final class CCITTFactory
 
             int numtags = readshort(endianess, reader);
 
-            // The number 50 is somewhat arbitary, it just stops us load up junk from somewhere
+            // The number 50 is somewhat arbitrary, it just stops us load up junk from somewhere
             // and tramping on
             if (numtags > 50)
             {
@@ -391,7 +392,7 @@ public final class CCITTFactory
                     {
                         if ((val & 1) != 0)
                         {
-                            // T4 2D - arbitary positive K value
+                            // T4 2D - arbitrary positive K value
                             k = 50;
                         }
                         // http://www.awaresystems.be/imaging/tiff/tifftags/t4options.html
@@ -456,7 +457,7 @@ public final class CCITTFactory
         }
     }
 
-    private static int readshort(char endianess, RandomAccess raf) throws IOException
+    private static int readshort(char endianess, RandomAccessRead raf) throws IOException
     {
         if (endianess == 'I')
         {
@@ -465,7 +466,7 @@ public final class CCITTFactory
         return (raf.read() << 8) | raf.read();
     }
 
-    private static int readlong(char endianess, RandomAccess raf) throws IOException
+    private static int readlong(char endianess, RandomAccessRead raf) throws IOException
     {
         if (endianess == 'I')
         {

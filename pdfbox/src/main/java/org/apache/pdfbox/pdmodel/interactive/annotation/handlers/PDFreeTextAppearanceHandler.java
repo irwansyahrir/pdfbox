@@ -16,10 +16,13 @@
 package org.apache.pdfbox.pdmodel.interactive.annotation.handlers;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.fontbox.util.Charsets;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
@@ -27,6 +30,8 @@ import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
@@ -39,7 +44,6 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationFreeText;
 import static org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLine.LE_NONE;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderEffectDictionary;
-import static org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDAbstractAppearanceHandler.SHORT_STYLES;
 import org.apache.pdfbox.pdmodel.interactive.annotation.layout.AppearanceStyle;
 import org.apache.pdfbox.pdmodel.interactive.annotation.layout.PlainText;
 import org.apache.pdfbox.pdmodel.interactive.annotation.layout.PlainTextFormatter;
@@ -49,9 +53,20 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
 {
     private static final Log LOG = LogFactory.getLog(PDFreeTextAppearanceHandler.class);
 
+    private static final Pattern COLOR_PATTERN =
+            Pattern.compile(".*color\\:\\s*\\#([0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]).*");
+
+    private float fontSize = 10;
+    private COSName fontName = COSName.HELV;
+
     public PDFreeTextAppearanceHandler(PDAnnotation annotation)
     {
         super(annotation);
+    }
+
+    public PDFreeTextAppearanceHandler(PDAnnotation annotation, PDDocument document)
+    {
+        super(annotation, document);
     }
 
     @Override
@@ -67,7 +82,7 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
     {
         PDAnnotationFreeText annotation = (PDAnnotationFreeText) getAnnotation();
         float[] pathsArray = new float[0];
-        if ("FreeTextCallout".equals(annotation.getIntent()))
+        if (PDAnnotationFreeText.IT_FREE_TEXT_CALLOUT.equals(annotation.getIntent()))
         {
             pathsArray = annotation.getCallout();
             if (pathsArray == null || pathsArray.length != 4 && pathsArray.length != 6)
@@ -84,8 +99,23 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
             setOpacity(cs, annotation.getConstantOpacity());
 
             // Adobe uses the last non stroking color from /DA as stroking color!
+            // But if there is a color in /DS, then that one is used for text.
             PDColor strokingColor = extractNonStrokingColor(annotation);
             boolean hasStroke = cs.setStrokingColorOnDemand(strokingColor);
+            PDColor textColor = strokingColor;
+            String defaultStyleString = annotation.getDefaultStyleString();
+            if (defaultStyleString != null)
+            {
+                Matcher m = COLOR_PATTERN.matcher(defaultStyleString);
+                if (m.find())
+                {
+                    int color = Integer.parseInt(m.group(1), 16);
+                    float r = ((color >> 16) & 0xFF) / 255f;
+                    float g = ((color >> 8) & 0xFF) / 255f;
+                    float b = (color & 0xFF) / 255f;
+                    textColor = new PDColor( new float[] { r, g, b }, PDDeviceRGB.INSTANCE);
+                }
+            }
 
             if (ab.dashArray != null)
             {
@@ -128,7 +158,7 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
             }
 
             // paint the styles here and after line(s) draw, to avoid line crossing a filled shape       
-            if ("FreeTextCallout".equals(annotation.getIntent())
+            if (PDAnnotationFreeText.IT_FREE_TEXT_CALLOUT.equals(annotation.getIntent())
                     // check only needed to avoid q cm Q if LE_NONE
                     && !LE_NONE.equals(annotation.getLineEndingStyle())
                     && pathsArray.length >= 4)
@@ -208,7 +238,21 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
             float clipWidth = width - ab.width * 4;
             float clipHeight = rotation == 90 || rotation == 270 ? 
                                 borderBox.getWidth() - ab.width * 4 : borderBox.getHeight() - ab.width * 4;
-            float fontSize = extractFontSize(annotation);
+            extractFontDetails(annotation);
+            if (document != null && document.getDocumentCatalog().getAcroForm() != null)
+            {
+                // Try to get font from AcroForm default resources
+                // Sample file: https://gitlab.freedesktop.org/poppler/poppler/issues/6
+                PDResources defaultResources = document.getDocumentCatalog().getAcroForm().getDefaultResources();
+                if (defaultResources != null)
+                {
+                    PDFont defaultResourcesFont = defaultResources.getFont(fontName);
+                    if (defaultResourcesFont != null)
+                    {
+                        font = defaultResourcesFont;
+                    }
+                }
+            }
 
             // value used by Adobe, no idea where it comes from, actual font bbox max y is 0.931
             // gathered by creating an annotation with width 0.
@@ -242,24 +286,36 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
             cs.addRect(xOffset, clipY, clipWidth, clipHeight);
             cs.clip();
 
-            cs.beginText();
-            cs.setFont(font, fontSize);
-            cs.setNonStrokingColor(strokingColor.getComponents());
-            AppearanceStyle appearanceStyle = new AppearanceStyle();
-            appearanceStyle.setFont(font);
-            appearanceStyle.setFontSize(fontSize);
-            PlainTextFormatter formatter = new PlainTextFormatter.Builder(cs)
-                    .style(appearanceStyle)
-                    .text(new PlainText(annotation.getContents()))
-                    .width(width - ab.width * 4)
-                    .wrapLines(true)
-                    .initialOffset(xOffset, yOffset)
-                    // Adobe ignores the /Q
-                    //.textAlign(annotation.getQ())
-                    .build();
-            formatter.format();
-            cs.endText();
-
+            if (annotation.getContents() != null)
+            {
+                cs.beginText();
+                cs.setFont(font, fontSize);
+                cs.setNonStrokingColor(textColor.getComponents());
+                AppearanceStyle appearanceStyle = new AppearanceStyle();
+                appearanceStyle.setFont(font);
+                appearanceStyle.setFontSize(fontSize);
+                PlainTextFormatter formatter = new PlainTextFormatter.Builder(cs)
+                        .style(appearanceStyle)
+                        .text(new PlainText(annotation.getContents()))
+                        .width(width - ab.width * 4)
+                        .wrapLines(true)
+                        .initialOffset(xOffset, yOffset)
+                        // Adobe ignores the /Q
+                        //.textAlign(annotation.getQ())
+                        .build();
+                try
+                {
+                    formatter.format();
+                }
+                catch (IllegalArgumentException ex)
+                {
+                    throw new IOException(ex);
+                }
+                finally
+                {
+                    cs.endText();
+                }
+            }
 
             if (pathsArray.length > 0)
             {
@@ -292,6 +348,8 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
                 
                 // need to set the BBox too, because rectangle modification came later
                 annotation.getNormalAppearanceStream().setBBox(getRectangle());
+                
+                //TODO when callout is used, /RD should be so that the result is the writable part
             }
         }
         catch (IOException ex)
@@ -318,7 +376,7 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
         try
         {
             // not sure if charset is correct, but we only need numbers and simple characters
-            PDFStreamParser parser = new PDFStreamParser(defaultAppearance.getBytes(Charsets.US_ASCII));
+            PDFStreamParser parser = new PDFStreamParser(defaultAppearance.getBytes(StandardCharsets.US_ASCII));
             COSArray arguments = new COSArray();
             COSArray colors = null;
             Operator graphicOp = null;
@@ -332,7 +390,9 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
                 {
                     Operator op = (Operator) token;
                     String name = op.getName();
-                    if ("g".equals(name) || "rg".equals(name) || "k".equals(name))
+                    if (OperatorName.NON_STROKING_GRAY.equals(name) ||
+                        OperatorName.NON_STROKING_RGB.equals(name) ||
+                        OperatorName.NON_STROKING_CMYK.equals(name))
                     {
                         graphicOp = op;
                         colors = arguments;
@@ -348,13 +408,13 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
             {
                 switch (graphicOp.getName())
                 {
-                    case "g":
+                    case OperatorName.NON_STROKING_GRAY:
                         strokingColor = new PDColor(colors, PDDeviceGray.INSTANCE);
                         break;
-                    case "rg":
+                    case OperatorName.NON_STROKING_RGB:
                         strokingColor = new PDColor(colors, PDDeviceRGB.INSTANCE);
                         break;
-                    case "k":
+                    case OperatorName.NON_STROKING_CMYK:
                         strokingColor = new PDColor(colors, PDDeviceCMYK.INSTANCE);
                         break;
                     default:
@@ -369,21 +429,25 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
         return strokingColor;
     }
 
-    //TODO extractNonStrokingColor and extractFontSize
-    // might somehow be replaced with PDDefaultAppearanceString,
-    // which is quite similar.
-    private float extractFontSize(PDAnnotationFreeText annotation)
+    //TODO extractNonStrokingColor and extractFontDetails
+    // might somehow be replaced with PDDefaultAppearanceString, which is quite similar.
+    private void extractFontDetails(PDAnnotationFreeText annotation)
     {
         String defaultAppearance = annotation.getDefaultAppearance();
+        if (defaultAppearance == null && document != null &&
+            document.getDocumentCatalog().getAcroForm() != null)
+        {
+            defaultAppearance = document.getDocumentCatalog().getAcroForm().getDefaultAppearance();
+        }
         if (defaultAppearance == null)
         {
-            return 10;
+            return;
         }
 
         try
         {
             // not sure if charset is correct, but we only need numbers and simple characters
-            PDFStreamParser parser = new PDFStreamParser(defaultAppearance.getBytes(Charsets.US_ASCII));
+            PDFStreamParser parser = new PDFStreamParser(defaultAppearance.getBytes(StandardCharsets.US_ASCII));
             COSArray arguments = new COSArray();
             COSArray fontArguments = new COSArray();
             for (Object token = parser.parseNextToken(); token != null; token = parser.parseNextToken())
@@ -396,7 +460,7 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
                 {
                     Operator op = (Operator) token;
                     String name = op.getName();
-                    if ("Tf".equals(name))
+                    if (OperatorName.SET_FONT_AND_SIZE.equals(name))
                     {
                         fontArguments = arguments;
                     }
@@ -409,18 +473,22 @@ public class PDFreeTextAppearanceHandler extends PDAbstractAppearanceHandler
             }
             if (fontArguments.size() >= 2)
             {
-                COSBase base = fontArguments.get(1);
+                COSBase base = fontArguments.get(0);
+                if (base instanceof COSName)
+                {
+                    fontName = (COSName) base;
+                }
+                base = fontArguments.get(1);
                 if (base instanceof COSNumber)
                 {
-                    return ((COSNumber) base).floatValue();
+                    fontSize = ((COSNumber) base).floatValue();
                 }
             }
         }
         catch (IOException ex)
         {
-            LOG.warn("Problem parsing /DA, will use default 10", ex);
+            LOG.warn("Problem parsing /DA, will use default 'Helv 10'", ex);
         }
-        return 10;
     }
 
     @Override

@@ -20,6 +20,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -46,7 +48,7 @@ public class PDStructureElementTest
     public void testPDFBox4197() throws IOException
     {
         Set<Revisions<PDAttributeObject>> attributeSet = new HashSet<>();
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-4197.pdf")))
+        try (PDDocument doc = Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-4197.pdf")))
         {
             PDStructureTreeRoot structureTreeRoot = doc.getDocumentCatalog().getStructureTreeRoot();
             checkElement(structureTreeRoot.getK(), attributeSet);

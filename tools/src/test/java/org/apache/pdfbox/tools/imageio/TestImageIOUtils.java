@@ -25,7 +25,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.HashSet;
@@ -40,6 +39,7 @@ import junit.framework.TestCase;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -114,18 +114,18 @@ public class TestImageIOUtils extends TestCase
     private void doTestFile(File file, String outDir) throws IOException
     {
         PDDocument document = null;
-        String imageType = "png";
         LOG.info("Preparing to convert " + file.getName());
         try
         {
             float dpi = 36; // low DPI so that rendering is FAST
-            document = PDDocument.load(file);
+            document = Loader.loadPDF(file);
 
             // Save image resources of first page
             checkSaveResources(document.getPage(0).getResources());
 
             // testing PNG
-            writeImage(document, imageType, outDir + file.getName() + "-", ImageType.RGB, dpi, 1, "");
+            String imageType = "png";
+            writeImage(document, imageType, outDir + file.getName() + "-", ImageType.RGB, dpi, 0, "");
             checkResolution(outDir + file.getName() + "-1." + imageType, (int) dpi);
             checkFileTypeByContent(outDir + file.getName() + "-1." + imageType, FileType.PNG);
 
@@ -144,13 +144,13 @@ public class TestImageIOUtils extends TestCase
             // testing GIF
             imageType = "gif";
             writeImage(document, imageType, outDir + file.getName() + "-", ImageType.RGB, dpi, 1, "");
-            // no META data posible for GIF, thus no dpi test
+            // no META data possible for GIF, thus no dpi test
             checkFileTypeByContent(outDir + file.getName() + "-1." + imageType, FileType.GIF);
 
             // testing WBMP
             imageType = "wbmp";
             writeImage(document, imageType, outDir + file.getName() + "-", ImageType.BINARY, dpi, 1, "");
-            // no META data posible for WBMP, thus no dpi test
+            // no META data possible for WBMP, thus no dpi test
 
             // testing TIFF
             imageType = "tif";
@@ -292,14 +292,8 @@ public class TestImageIOUtils extends TestCase
             throw new IOException("could not create output directory");
         }
 
-        File[] testFiles = new File(inDir).listFiles(new FilenameFilter()
-        {
-            @Override
-            public boolean accept(File dir, String name)
-            {
-                return (name.endsWith(".pdf") || name.endsWith(".ai"));
-            }
-        });
+        File[] testFiles = new File(inDir).listFiles(
+                (dir, name) -> (name.endsWith(".pdf") || name.endsWith(".ai")));
 
         for (File file : testFiles)
         {

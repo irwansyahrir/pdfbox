@@ -62,7 +62,8 @@ public class PDFTextStripperByArea extends PDFTextStripper
      * Add a new region to group text by.
      *
      * @param regionName The name of the region.
-     * @param rect The rectangle area to retrieve the text from.
+     * @param rect The rectangle area to retrieve the text from. The y-coordinates are java
+     * coordinates (y == 0 is top), not PDF coordinates (y == 0 is bottom).
      */
     public void addRegion( String regionName, Rectangle2D rect )
     {
@@ -119,7 +120,7 @@ public class PDFTextStripperByArea extends PDFTextStripper
             //can be reused.
             String regionName = region;
             ArrayList<List<TextPosition>> regionCharactersByArticle = new ArrayList<>();
-            regionCharactersByArticle.add( new ArrayList<TextPosition>() );
+            regionCharactersByArticle.add(new ArrayList<>());
             regionCharacterList.put( regionName, regionCharactersByArticle );
             regionText.put( regionName, new StringWriter() );
         }
@@ -135,17 +136,16 @@ public class PDFTextStripperByArea extends PDFTextStripper
      * {@inheritDoc}
      */
     @Override
-    protected void processTextPosition( TextPosition text )
+    protected void processTextPosition(TextPosition text)
     {
-        for (String region : regionArea.keySet())
+        regionArea.forEach((key, rect) ->
         {
-            Rectangle2D rect = regionArea.get( region );
-            if( rect.contains( text.getX(), text.getY() ) )
+            if (rect.contains(text.getX(), text.getY()))
             {
-                charactersByArticle = regionCharacterList.get( region );
-                super.processTextPosition( text );
+                charactersByArticle = regionCharacterList.get(key);
+                super.processTextPosition(text);
             }
-        }
+        });
     }
 
     

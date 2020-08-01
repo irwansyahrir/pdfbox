@@ -23,6 +23,8 @@ import java.io.InputStream;
 import java.util.HashSet;
 import java.util.Set;
 import junit.framework.TestCase;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
@@ -272,8 +274,8 @@ public class TestFontEmbedding extends TestCase
         {
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
-            InputStream input = PDFont.class.getClassLoader().getResourceAsStream(
-                    "org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf");
+            InputStream input = PDFont.class.getResourceAsStream(
+                    "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf");
             PDType0Font font = PDType0Font.load(document, input, useSubset);
             try (PDPageContentStream stream = new PDPageContentStream(document, page))
             {
@@ -295,7 +297,7 @@ public class TestFontEmbedding extends TestCase
 
     private String getUnicodeText(File file) throws IOException
     {
-        PDDocument document = PDDocument.load(file);
+        PDDocument document = Loader.loadPDF(file);
         PDFTextStripper stripper = new PDFTextStripper();
         return stripper.getText(document);
     }

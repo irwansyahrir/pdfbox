@@ -60,53 +60,76 @@ public final class LosslessFactory
     }
 
     /**
-     * Creates a new lossless encoded Image XObject from a Buffered Image.
+     * Creates a new lossless encoded image XObject from a BufferedImage.
+     * <p>
+     * <u>New for advanced users from 2.0.12 on:</u><br>
+     * If you created your image with a non standard ICC colorspace, it will be
+     * preserved. (If you load images in java using ImageIO then no need to read
+     * this segment) However a new colorspace will be created for each image. So
+     * if you create a PDF with several such images, consider replacing the
+     * colorspace with a common object to save space. This is done with
+     * {@link PDImageXObject#getColorSpace()} and
+     * {@link PDImageXObject#setColorSpace(org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace) PDImageXObject.setColorSpace()}
      *
      * @param document the document where the image will be created
-     * @param image the buffered image to embed
-     * @return a new Image XObject
+     * @param image the BufferedImage to embed
+     * @return a new image XObject
      * @throws IOException if something goes wrong
      */
     public static PDImageXObject createFromImage(PDDocument document, BufferedImage image)
             throws IOException
     {
-        if ((image.getType() == BufferedImage.TYPE_BYTE_GRAY && image.getColorModel().getPixelSize() <= 8)
-                || (image.getType() == BufferedImage.TYPE_BYTE_BINARY && image.getColorModel().getPixelSize() == 1))
+        if (isGrayImage(image))
         {
             return createFromGrayImage(image, document);
         }
-        else
-        {
-            // We try to encode the image with predictor
-            if (usePredictorEncoder)
-            {
-                PDImageXObject pdImageXObject = new PredictorEncoder(document, image).encode();
-                if (pdImageXObject != null)
-                {
-                    if (pdImageXObject.getColorSpace() == PDDeviceRGB.INSTANCE &&
-                        pdImageXObject.getBitsPerComponent() < 16 &&
-                        image.getWidth() * image.getHeight() <= 50 * 50)
-                    {
-                        // also create classic compressed image, compare sizes
-                        PDImageXObject pdImageXObjectClassic = createFromRGBImage(image, document);
-                        if (pdImageXObjectClassic.getCOSObject().getLength() < 
-                            pdImageXObject.getCOSObject().getLength())
-                        {
-                            pdImageXObject.getCOSObject().close();
-                            return pdImageXObjectClassic;
-                        }
-                        else
-                        {
-                            pdImageXObjectClassic.getCOSObject().close();
-                        }
-                    }
-                    return pdImageXObject;
-                }
-            }
 
-            // Fallback: We export the image as 8-bit sRGB and might loose color information
-            return createFromRGBImage(image, document);
+        // We try to encode the image with predictor
+        if (usePredictorEncoder)
+        {
+            PDImageXObject pdImageXObject = new PredictorEncoder(document, image).encode();
+            if (pdImageXObject != null)
+            {
+                if (pdImageXObject.getColorSpace() == PDDeviceRGB.INSTANCE &&
+                    pdImageXObject.getBitsPerComponent() < 16 &&
+                    image.getWidth() * image.getHeight() <= 50 * 50)
+                {
+                    // also create classic compressed image, compare sizes
+                    PDImageXObject pdImageXObjectClassic = createFromRGBImage(image, document);
+                    if (pdImageXObjectClassic.getCOSObject().getLength() < 
+                        pdImageXObject.getCOSObject().getLength())
+                    {
+                        pdImageXObject.getCOSObject().close();
+                        return pdImageXObjectClassic;
+                    }
+                    else
+                    {
+                        pdImageXObjectClassic.getCOSObject().close();
+                    }
+                }
+                return pdImageXObject;
+            }
         }
+
+        // Fallback: We export the image as 8-bit sRGB and might lose color information
+        return createFromRGBImage(image, document);
+    }
+
+    private static boolean isGrayImage(BufferedImage image)
+    {
+        if (image.getTransparency() != Transparency.OPAQUE)
+        {
+            return false;
+        }
+        if (image.getType() == BufferedImage.TYPE_BYTE_GRAY && image.getColorModel().getPixelSize() <= 8)
+        {
+            return true;
+        }
+        if (image.getType() == BufferedImage.TYPE_BYTE_BINARY && image.getColorModel().getPixelSize() == 1)
+        {
+            return true;
+        }
+        return false;
     }
 
     // grayscale images need one color per sample
@@ -208,8 +231,7 @@ public final class LosslessFactory
     }
 
     /**
-     * Create a PDImageXObject while making a decision whether not to 
-     * compress, use Flate filter only, or Flate and LZW filters.
+     * Create a PDImageXObject using the Flate filter.
      * 
      * @param document The document.
      * @param byteArray array with data.
@@ -220,7 +242,7 @@ public final class LosslessFactory
      * @return the newly created PDImageXObject with the data compressed.
      * @throws IOException 
      */
-    private static PDImageXObject prepareImageXObject(PDDocument document, 
+    static PDImageXObject prepareImageXObject(PDDocument document,
             byte [] byteArray, int width, int height, int bitsPerComponent, 
             PDColorSpace initColorSpace) throws IOException
     {
@@ -333,7 +355,6 @@ public final class LosslessFactory
             switch (imageType)
             {
                 case BufferedImage.TYPE_CUSTOM:
-                {
                     switch (imageRaster.getTransferType())
                     {
                         case DataBuffer.TYPE_USHORT:
@@ -350,26 +371,21 @@ public final class LosslessFactory
                             return null;
                     }
                     break;
-                }
 
                 case BufferedImage.TYPE_3BYTE_BGR:
                 case BufferedImage.TYPE_4BYTE_ABGR:
-                {
                     elementsInRowPerPixel = componentsPerPixel;
                     prevRow = new byte[width * elementsInRowPerPixel];
                     transferRow = new byte[width * elementsInRowPerPixel];
                     break;
-                }
 
                 case BufferedImage.TYPE_INT_BGR:
                 case BufferedImage.TYPE_INT_ARGB:
                 case BufferedImage.TYPE_INT_RGB:
-                {
                     elementsInRowPerPixel = 1;
                     prevRow = new int[width * elementsInRowPerPixel];
                     transferRow = new int[width * elementsInRowPerPixel];
                     break;
-                }
 
                 default:
                     // We can not handle this unknown format
@@ -516,6 +532,8 @@ public final class LosslessFactory
                     targetValues[1] = b1;
                     targetValues[2] = b0;
                     break;
+                default:
+                    break;
             }
         }
 
@@ -554,8 +572,11 @@ public final class LosslessFactory
             int w = image.getWidth();
 
             ColorSpace srcCspace = image.getColorModel().getColorSpace();
-            PDColorSpace pdColorSpace = srcCspace.getType() != ColorSpace.TYPE_CMYK
-                                        ? PDDeviceRGB.INSTANCE : PDDeviceCMYK.INSTANCE;
+            int srcCspaceType = srcCspace.getType();
+            PDColorSpace pdColorSpace = srcCspaceType == ColorSpace.TYPE_CMYK
+                    ? PDDeviceCMYK.INSTANCE
+                    : (srcCspaceType == ColorSpace.TYPE_GRAY
+                            ? PDDeviceGray.INSTANCE : PDDeviceRGB.INSTANCE);
 
             // Encode the image profile if the image has one
             if (srcCspace instanceof ICC_ColorSpace)
@@ -572,6 +593,11 @@ public final class LosslessFactory
                     }
                     pdProfile.getPDStream().getCOSObject().setInt(COSName.N,
                             srcCspace.getNumComponents());
+                    pdProfile.getPDStream().getCOSObject().setItem(COSName.ALTERNATE,
+                            srcCspaceType == ColorSpace.TYPE_GRAY ? COSName.DEVICEGRAY
+                                    : (srcCspaceType == ColorSpace.TYPE_CMYK ? COSName.DEVICECMYK
+                                            : COSName.DEVICERGB));
+                    pdColorSpace = pdProfile;
                 }
             }
 

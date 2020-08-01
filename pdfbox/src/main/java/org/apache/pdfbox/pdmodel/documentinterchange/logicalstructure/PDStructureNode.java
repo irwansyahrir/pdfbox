@@ -37,39 +37,6 @@ public abstract class PDStructureNode implements COSObjectable
 {
 
     /**
-     * Creates a node in the structure tree. Can be either a structure tree root,
-     *  or a structure element.
-     * 
-     * @param node the node dictionary
-     * @return the structure node
-     */
-    public static PDStructureNode create(COSDictionary node)
-    {
-        String type = node.getNameAsString(COSName.TYPE);
-        if ("StructTreeRoot".equals(type))
-        {
-            return new PDStructureTreeRoot(node);
-        }
-        if ((type == null) || "StructElem".equals(type))
-        {
-            return new PDStructureElement(node);
-        }
-        throw new IllegalArgumentException("Dictionary must not include a Type entry with a value that is neither StructTreeRoot nor StructElem.");
-    }
-
-
-    private final COSDictionary dictionary;
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public COSDictionary getCOSObject()
-    {
-        return dictionary;
-    }
-
-    /**
      * Constructor.
      *
      * @param type the type
@@ -91,6 +58,39 @@ public abstract class PDStructureNode implements COSObjectable
     }
 
     /**
+     * Creates a node in the structure tree. Can be either a structure tree root,
+     *  or a structure element.
+     * 
+     * @param node the node dictionary
+     * @return the structure node
+     */
+    public static PDStructureNode create(COSDictionary node)
+    {
+        String type = node.getNameAsString(COSName.TYPE);
+        if ("StructTreeRoot".equals(type))
+        {
+            return new PDStructureTreeRoot(node);
+        }
+        if (type == null || "StructElem".equals(type))
+        {
+            return new PDStructureElement(node);
+        }
+        throw new IllegalArgumentException("Dictionary must not include a Type entry with a value that is neither StructTreeRoot nor StructElem.");
+    }
+
+
+    private final COSDictionary dictionary;
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public COSDictionary getCOSObject()
+    {
+        return dictionary;
+    }
+
+    /**
      * Returns the type.
      * 
      * @return the type
@@ -103,7 +103,7 @@ public abstract class PDStructureNode implements COSObjectable
     /**
      * Returns a list of objects for the kids (K).
      * 
-     * @return a list of objects for the kids
+     * @return a list of objects for the kids, never null.
      */
     public List<Object> getKids()
     {
@@ -111,7 +111,7 @@ public abstract class PDStructureNode implements COSObjectable
         COSBase k = this.getCOSObject().getDictionaryObject(COSName.K);
         if (k instanceof COSArray)
         {
-            for (COSBase kid : ((COSArray) k))
+            for (COSBase kid : (COSArray) k)
             {
                 Object kidObject = this.createObject(kid);
                 if (kidObject != null)

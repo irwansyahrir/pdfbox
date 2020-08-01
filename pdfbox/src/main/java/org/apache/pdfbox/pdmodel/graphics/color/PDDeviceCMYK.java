@@ -16,7 +16,6 @@
  */
 package org.apache.pdfbox.pdmodel.graphics.color;
 
-import java.net.URL;
 import java.util.Arrays;
 
 import org.apache.pdfbox.cos.COSName;
@@ -26,6 +25,7 @@ import java.awt.color.ICC_ColorSpace;
 import java.awt.color.ICC_Profile;
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 
 import java.io.InputStream;
@@ -95,17 +95,12 @@ public class PDDeviceCMYK extends PDDeviceColorSpace
         // Instead, the "ISO Coated v2 300% (basICColor)" is used, which
         // is an open alternative to the "ISO Coated v2 300% (ECI)" profile.
 
-        String name = "org/apache/pdfbox/resources/icc/ISOcoated_v2_300_bas.icc";
+        String name = "/org/apache/pdfbox/resources/icc/ISOcoated_v2_300_bas.icc";
 
-        URL url = PDDeviceCMYK.class.getClassLoader().getResource(name);
-        if (url == null)
+        try (InputStream resourceAsStream = PDDeviceCMYK.class.getResourceAsStream(name);
+             InputStream is = new BufferedInputStream(resourceAsStream))
         {
-            throw new IOException("Error loading resource: " + name);
-        }
-
-        try (InputStream input = url.openStream())
-        {
-            return ICC_Profile.getInstance(input);
+            return ICC_Profile.getInstance(is);
         }
     }
 

@@ -206,7 +206,7 @@ public final class DateConverter
                         && (date.substring(date.length() - 6, date.length() - 5).equals("+") || date.substring(
                                 date.length() - 6, date.length() - 5).equals("-")))
                 {
-                    // thats a timezone string, remove the :
+                    // that's a timezone string, remove the :
                     date = date.substring(0, date.length() - 3) + date.substring(date.length() - 2);
                 }
                 for (int i = 0; (retval == null) && (i < POTENTIAL_FORMATS.length); i++)
@@ -319,10 +319,9 @@ public final class DateConverter
             retval.append("+");
         }
         timeZone = Math.abs(timeZone);
-        // milliseconds/1000 = seconds = seconds / 60 = minutes = minutes/60 =
-        // hours
+        // milliseconds/1000 = seconds; seconds / 60 = minutes; minutes/60 = hours
         int hours = timeZone / 1000 / 60 / 60;
-        int minutes = (timeZone - (hours * 1000 * 60 * 60)) / 1000 / 1000;
+        int minutes = (timeZone - (hours * 1000 * 60 * 60)) / 1000 / 60;
         if (hours < 10)
         {
             retval.append("0");

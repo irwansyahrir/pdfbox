@@ -30,11 +30,6 @@ public abstract class TestCOSNumber extends TestCOSBase
     public abstract void testFloatValue();
 
     /**
-     * Test doubleValue() - test that the correct double value is returned.
-     */
-    public abstract void testDoubleValue();
-
-    /**
      * Test intValue() - test that the correct int value is returned.
      */
     public abstract void testIntValue();
@@ -85,4 +80,28 @@ public abstract class TestCOSNumber extends TestCOSBase
             fail("Failed to convert a number " + e.getMessage());
         }
     }
+
+    /**
+     * PDFBOX-4895: large number, too big for a long leads to a null value.
+     * 
+     * @throws IOException
+     */
+    public void testLargeNumber() throws IOException
+    {
+        assertNull(COSNumber.get("18446744073307448448"));
+        assertNull(COSNumber.get("-18446744073307448448"));
+    }
+
+    public void testInvalidNumber()
+    {
+        try
+        {
+            COSNumber.get("18446744073307F448448");
+            fail("Was expecting an IOException");
+        }
+        catch (IOException e)
+        {
+        }
+    }
+
 }

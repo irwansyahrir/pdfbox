@@ -17,8 +17,12 @@
 
 package org.apache.pdfbox.util;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Base64;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 /**
  * Utility functions for hex encoding.
@@ -27,6 +31,8 @@ import java.io.OutputStream;
  */
 public final class Hex
 {
+    private static final Log LOG = LogFactory.getLog(Hex.class);
+
     /**
      * for hex conversion.
      * 
@@ -172,5 +178,53 @@ public final class Hex
     private static int getLowNibble(byte b)
     {
         return b & 0x0F;
+    }
+
+    /**
+     * Decode a base64 String.
+     *
+     * @param base64Value a base64 encoded String.
+     *
+     * @return the decoded String as a byte array.
+     *
+     * @throws IllegalArgumentException if this isn't a base64 encoded string.
+     */
+    public static byte[] decodeBase64(String base64Value)
+    {
+        return Base64.getDecoder().decode(base64Value.replaceAll("\\s", ""));
+    }
+
+    /**
+     * Decodes a hex String into a byte array.
+     *
+     * @param s A String with ASCII hex.
+     * @return decoded byte array.
+     */
+    public static byte[] decodeHex(String s)
+    {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        int i = 0;
+        while (i < s.length() - 1)
+        {
+            if (s.charAt(i) == '\n' || s.charAt(i) == '\r')
+            {
+                ++i;
+            }
+            else
+            {
+                String hexByte = s.substring(i, i + 2);
+                try
+                {
+                    baos.write(Integer.parseInt(hexByte, 16)); // Byte.parseByte won't work with "9C"
+                }
+                catch (NumberFormatException ex)
+                {
+                    LOG.error("Can't parse " + hexByte + ", aborting decode", ex);
+                    break;
+                }
+                i += 2;
+            }
+        }
+        return baos.toByteArray();
     }
 }

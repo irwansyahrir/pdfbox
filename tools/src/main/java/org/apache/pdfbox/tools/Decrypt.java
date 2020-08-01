@@ -29,6 +29,7 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
@@ -42,6 +43,7 @@ import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
 public final class Decrypt
 {
     private static final String ALIAS = "alias";
+    @SuppressWarnings({"squid:S2068"})
     private static final String PASSWORD = "password";
     private static final String KEYSTORE = "keyStore";
     
@@ -150,7 +152,7 @@ public final class Decrypt
             {
                 keyStoreStream = new FileInputStream(keyStore);
             }
-            document = PDDocument.load(new File(infile), password, keyStoreStream, alias);
+            document = Loader.loadPDF(new File(infile), password, keyStoreStream, alias);
             
             if (document.isEncrypted())
             {

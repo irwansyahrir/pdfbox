@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -45,6 +46,7 @@ public final class ExtractTTFFonts
 {
     private int fontCounter = 1;
 
+    @SuppressWarnings({"squid:S2068"})
     private static final String PASSWORD = "-password";
     private static final String PREFIX = "-prefix";
     private static final String ADDKEY = "-addkey";
@@ -75,6 +77,7 @@ public final class ExtractTTFFonts
         else
         {
             String pdfFile = null;
+            @SuppressWarnings({"squid:S2068"})
             String password = "";
             String prefix = null;
             boolean addKey = false;
@@ -119,7 +122,7 @@ public final class ExtractTTFFonts
                 {
                     prefix = pdfFile.substring(0, pdfFile.length() - 4);
                 }
-                try (PDDocument document = PDDocument.load(new File(pdfFile), password))
+                try (PDDocument document = Loader.loadPDF(new File(pdfFile), password))
                 {
                     for (PDPage page : document.getPages())
                     {

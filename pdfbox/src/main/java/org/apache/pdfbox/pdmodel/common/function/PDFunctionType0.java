@@ -17,6 +17,8 @@
 package org.apache.pdfbox.pdmodel.common.function;
 
 import java.io.IOException;
+import java.io.InputStream;
+
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.MemoryCacheImageInputStream;
 
@@ -97,52 +99,6 @@ public class PDFunctionType0 extends PDFunction
             size = (COSArray) getCOSObject().getDictionaryObject(COSName.SIZE);
         }
         return size;
-    }
-
-    /**
-     * Get all sample values of this function.
-     * 
-     * @return an array with all samples.
-     */
-    private int[][] getSamples()
-    {
-        if (samples == null)
-        {
-            int arraySize = 1;
-            int numberOfInputValues = getNumberOfInputParameters();
-            int numberOfOutputValues = getNumberOfOutputParameters();
-            COSArray sizes = getSize();
-            for (int i = 0; i < numberOfInputValues; i++)
-            {
-                arraySize *= sizes.getInt(i);
-            }
-            samples = new int[arraySize][numberOfOutputValues];
-            int bitsPerSample = getBitsPerSample();
-            int index = 0;
-            try
-            {
-                // PDF spec 1.7 p.171:
-                // Each sample value is represented as a sequence of BitsPerSample bits. 
-                // Successive values are adjacent in the bit stream; there is no padding at byte boundaries.
-                try (ImageInputStream mciis = new MemoryCacheImageInputStream(getPDStream().createInputStream()))
-                {
-                    for (int i = 0; i < arraySize; i++)
-                    {
-                        for (int k = 0; k < numberOfOutputValues; k++)
-                        { 
-                            // TODO will this cast work properly for 32 bitsPerSample or should we use long[]?
-                            samples[index][k] = (int) mciis.readBits(bitsPerSample);
-                        }
-                        index++;
-                    }
-                }
-            }
-            catch (IOException exception)
-            {
-                LOG.error("IOException while reading the sample values of this function.", exception);
-            }
-        }
-        return samples;
     }
 
     /**
@@ -282,36 +238,6 @@ public class PDFunctionType0 extends PDFunction
         decode = decodeValues;
         getCOSObject().setItem(COSName.DECODE, decodeValues);
     }
-    
-    /**
-     * calculate array index (structure described in p.171 PDF spec 1.7) in
-     * multiple dimensions.
-     *
-     * @param vector with coordinates
-     * @return index in flat array
-     */
-    private int calcSampleIndex(int[] vector)
-    {
-        // inspiration: http://stackoverflow.com/a/12113479/535646
-        // but used in reverse
-        float[] sizeValues = getSize().toFloatArray();
-        int index = 0;
-        int sizeProduct = 1;
-        int dimension = vector.length;
-        for (int i = dimension - 2; i >= 0; --i)
-        {
-            sizeProduct *= sizeValues[i];
-        }
-        for (int i = dimension - 1; i >= 0; --i)
-        {
-            index += sizeProduct * vector[i];
-            if (i - 1 >= 0)
-            {
-                sizeProduct /= sizeValues[i - 1];
-            }
-        }
-        return index;
-    }
 
     /**
      * Inner class do to an interpolation in the Nth dimension by comparing the
@@ -415,6 +341,81 @@ public class PDFunctionType0 extends PDFunction
                 return resultSample;
             }
         }
+
+        /**
+         * calculate array index (structure described in p.171 PDF spec 1.7) in multiple dimensions.
+         *
+         * @param vector with coordinates
+         * @return index in flat array
+         */
+        private int calcSampleIndex(int[] vector)
+        {
+            // inspiration: http://stackoverflow.com/a/12113479/535646
+            // but used in reverse
+            float[] sizeValues = getSize().toFloatArray();
+            int index = 0;
+            int sizeProduct = 1;
+            int dimension = vector.length;
+            for (int i = dimension - 2; i >= 0; --i)
+            {
+                sizeProduct *= sizeValues[i];
+            }
+            for (int i = dimension - 1; i >= 0; --i)
+            {
+                index += sizeProduct * vector[i];
+                if (i - 1 >= 0)
+                {
+                    sizeProduct /= sizeValues[i - 1];
+                }
+            }
+            return index;
+        }
+
+        /**
+         * Get all sample values of this function.
+         *
+         * @return an array with all samples.
+         */
+        private int[][] getSamples()
+        {
+            if (samples == null)
+            {
+                int arraySize = 1;
+                int nIn = getNumberOfInputParameters();
+                int nOut = getNumberOfOutputParameters();
+                COSArray sizes = getSize();
+                for (int i = 0; i < nIn; i++)
+                {
+                    arraySize *= sizes.getInt(i);
+                }
+                samples = new int[arraySize][nOut];
+                int bitsPerSample = getBitsPerSample();
+                int index = 0;
+                try (InputStream is = getPDStream().createInputStream())
+                {
+                    // PDF spec 1.7 p.171:
+                    // Each sample value is represented as a sequence of BitsPerSample bits. 
+                    // Successive values are adjacent in the bit stream; there is no padding at byte boundaries.
+                    try (ImageInputStream mciis = new MemoryCacheImageInputStream(is))
+                    {
+                        for (int i = 0; i < arraySize; i++)
+                        {
+                            for (int k = 0; k < nOut; k++)
+                            {
+                                // TODO will this cast work properly for 32 bitsPerSample or should we use long[]?
+                                samples[index][k] = (int) mciis.readBits(bitsPerSample);
+                            }
+                            index++;
+                        }
+                    }
+                }
+                catch (IOException exception)
+                {
+                    LOG.error("IOException while reading the sample values of this function.", exception);
+                }
+            }
+            return samples;
+        }
     }
 
     /**
@@ -434,6 +435,7 @@ public class PDFunctionType0 extends PDFunction
 
         int[] inputPrev = new int[numberOfInputValues];
         int[] inputNext = new int[numberOfInputValues];
+        input = input.clone(); // PDFBOX-4461
 
         for (int i = 0; i < numberOfInputValues; i++)
         {

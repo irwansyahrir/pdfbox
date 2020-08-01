@@ -17,10 +17,11 @@
 package org.apache.pdfbox.tools.imageio;
 
 import java.awt.image.BufferedImage;
-import java.io.File;
+import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.Iterator;
 
 import javax.imageio.IIOImage;
@@ -51,9 +52,10 @@ public final class ImageIOUtil
     }
 
     /**
-     * Writes a buffered image to a file using the given image format. See     
-     * {@link #writeImage(BufferedImage image, String formatName, 
-     * OutputStream output, int dpi, float quality)} for more details.
+     * Writes a buffered image to a file using the given image format. The compression is set for
+     * maximum compression for PNG and maximum quality for all other file formats. See
+     * {@link #writeImage(BufferedImage image, String formatName, OutputStream output, int dpi, float compressionQuality)}
+     * for more details.
      *
      * @param image the image to be written
      * @param filename used to construct the filename for the individual image.
@@ -65,65 +67,46 @@ public final class ImageIOUtil
     public static boolean writeImage(BufferedImage image, String filename,
             int dpi) throws IOException
     {
-        return writeImage(image, filename, dpi, 1.0f);
+        float compressionQuality = 1f;
+        String formatName = filename.substring(filename.lastIndexOf('.') + 1);
+        if ("png".equalsIgnoreCase(formatName))
+        {
+            // PDFBOX-4655: prevent huge PNG files on jdk11 / jdk12 / jjdk13
+            compressionQuality = 0f;
+        }
+        return writeImage(image, filename, dpi, compressionQuality);
     }
 
     /**
      * Writes a buffered image to a file using the given image format.
      * See {@link #writeImage(BufferedImage image, String formatName,
-     * OutputStream output, int dpi, float quality)} for more details.
+     * OutputStream output, int dpi, float compressionQuality)} for more details.
      *
      * @param image the image to be written
      * @param filename used to construct the filename for the individual image. Its suffix will be
      * used as the image format.
      * @param dpi the resolution in dpi (dots per inch) to be used in metadata
-     * @param quality quality to be used when compressing the image (0 &lt; quality &lt; 1.0f)
+     * @param compressionQuality quality to be used when compressing the image (0 &lt;
+     * compressionQuality &lt; 1.0f). See {@link ImageWriteParam#setCompressionQuality(float)} for
+     * more details.
      * @return true if the image file was produced, false if there was an error.
      * @throws IOException if an I/O error occurs
      */
     public static boolean writeImage(BufferedImage image, String filename,
-            int dpi, float quality) throws IOException
+            int dpi, float compressionQuality) throws IOException
     {
-        File file = new File(filename);
-        try (FileOutputStream output = new FileOutputStream(file))
+        try (OutputStream output = new BufferedOutputStream(new FileOutputStream(filename)))
         {
             String formatName = filename.substring(filename.lastIndexOf('.') + 1);
-            return writeImage(image, formatName, output, dpi, quality);
+            return writeImage(image, formatName, output, dpi, compressionQuality);
         }
     }
 
     /**
-     * Writes a buffered image to a file using the given image format. See      
-     * {@link #writeImage(BufferedImage image, String formatName, 
-     * OutputStream output, int dpi, float quality)} for more details.
-     *
-     * @param image the image to be written
-     * @param formatName the target format (ex. "png") which is also the suffix
-     * for the filename
-     * @param filename used to construct the filename for the individual image.
-     * The formatName parameter will be used as the suffix.
-     * @param dpi the resolution in dpi (dots per inch) to be used in metadata
-     * @return true if the image file was produced, false if there was an error.
-     * @throws IOException if an I/O error occurs
-     * @deprecated use
-     * {@link #writeImage(BufferedImage image, String filename, int dpi)}, which
-     * uses the full filename instead of just the prefix.
-     */
-    @Deprecated
-    public static boolean writeImage(BufferedImage image, String formatName, String filename,
-            int dpi) throws IOException
-    {
-        File file = new File(filename + "." + formatName);
-        try (FileOutputStream output = new FileOutputStream(file))
-        {
-            return writeImage(image, formatName, output, dpi);
-        }
-    }
-
-    /**
-     * Writes a buffered image to a file using the given image format. See      
-     * {@link #writeImage(BufferedImage image, String formatName, 
-     * OutputStream output, int dpi, float quality)} for more details.
+     * Writes a buffered image to a file using the given image format. The compression is set for
+     * maximum compression for PNG and maximum quality for all other file formats. See
+     * {@link #writeImage(BufferedImage image, String formatName, OutputStream output, int dpi, float compressionQuality)}
+     * for more details.
      *
      * @param image the image to be written
      * @param formatName the target format (ex. "png")
@@ -138,9 +121,10 @@ public final class ImageIOUtil
     }
 
     /**
-     * Writes a buffered image to a file using the given image format. See      
-     * {@link #writeImage(BufferedImage image, String formatName, 
-     * OutputStream output, int dpi, float quality)} for more details.
+     * Writes a buffered image to a file using the given image format. The compression is set for
+     * maximum compression for PNG and maximum quality for all other file formats. See
+     * {@link #writeImage(BufferedImage image, String formatName, OutputStream output, int dpi, float compressionQuality)}
+     * for more details.
      *
      * @param image the image to be written
      * @param formatName the target format (ex. "png")
@@ -152,12 +136,18 @@ public final class ImageIOUtil
     public static boolean writeImage(BufferedImage image, String formatName, OutputStream output,
             int dpi) throws IOException
     {
-        return writeImage(image, formatName, output, dpi, 1.0f);
+        float compressionQuality = 1f;
+        if ("png".equalsIgnoreCase(formatName))
+        {
+            // PDFBOX-4655: prevent huge PNG files on jdk11 / jdk12 / jjdk13
+            compressionQuality = 0f;
+        }
+        return writeImage(image, formatName, output, dpi, compressionQuality);
     }
 
     /**
      * Writes a buffered image to a file using the given image format.
-     * Compression is fixed for PNG, GIF, BMP and WBMP, dependent of the quality
+     * Compression is fixed for PNG, GIF, BMP and WBMP, dependent of the compressionQuality
      * parameter for JPG, and dependent of bit count for TIFF (a bitonal image
      * will be compressed with CCITT G4, a color image with LZW). Creating a
      * TIFF image is only supported if the jai_imageio library (or equivalent)
@@ -167,20 +157,21 @@ public final class ImageIOUtil
      * @param formatName the target format (ex. "png")
      * @param output the output stream to be used for writing
      * @param dpi the resolution in dpi (dots per inch) to be used in metadata
-     * @param quality quality to be used when compressing the image (0 &lt;
-     * quality &lt; 1.0f)
+     * @param compressionQuality quality to be used when compressing the image (0 &lt;
+     * compressionQuality &lt; 1.0f). See {@link ImageWriteParam#setCompressionQuality(float)} for
+     * more details.
      * @return true if the image file was produced, false if there was an error.
      * @throws IOException if an I/O error occurs
      */
     public static boolean writeImage(BufferedImage image, String formatName, OutputStream output,
-            int dpi, float quality) throws IOException
+            int dpi, float compressionQuality) throws IOException
     {
-        return writeImage(image, formatName, output, dpi, quality, "");
+        return writeImage(image, formatName, output, dpi, compressionQuality, "");
     }
 
     /**
      * Writes a buffered image to a file using the given image format.
-     * Compression is fixed for PNG, GIF, BMP and WBMP, dependent of the quality
+     * Compression is fixed for PNG, GIF, BMP and WBMP, dependent of the compressionQuality
      * parameter for JPG, and dependent of bit count for TIFF (a bitonal image
      * will be compressed with CCITT G4, a color image with LZW). Creating a
      * TIFF image is only supported if the jai_imageio library is in the class
@@ -190,8 +181,9 @@ public final class ImageIOUtil
      * @param formatName the target format (ex. "png")
      * @param output the output stream to be used for writing
      * @param dpi the resolution in dpi (dots per inch) to be used in metadata
-     * @param compressionQuality quality to be used when compressing the image
-     * (0 &lt; quality &lt; 1.0f)
+     * @param compressionQuality quality to be used when compressing the image (0 &lt;
+     * compressionQuality &lt; 1.0f). See {@link ImageWriteParam#setCompressionQuality(float)} for
+     * more details.
      * @param compressionType Advanced users only, and only relevant for TIFF
      * files: If null, save uncompressed; if empty string, use logic explained
      * above; other valid values are found in the javadoc of
@@ -235,14 +227,7 @@ public final class ImageIOUtil
             if (writer == null)
             {
                 LOG.error("No ImageWriter found for '" + formatName + "' format");
-                StringBuilder sb = new StringBuilder();
-                String[] writerFormatNames = ImageIO.getWriterFormatNames();
-                for (String fmt : writerFormatNames)
-                {
-                    sb.append(fmt);
-                    sb.append(' ');
-                }
-                LOG.error("Supported formats: " + sb);
+                LOG.error("Supported formats: " + Arrays.toString(ImageIO.getWriterFormatNames()));
                 return false;
             }
 
@@ -278,8 +263,8 @@ public final class ImageIOUtil
                 // TIFF metadata
                 TIFFUtil.updateMetadata(metadata, image, dpi);
             }
-            else if ("jpeg".equals(formatName.toLowerCase())
-                    || "jpg".equals(formatName.toLowerCase()))
+            else if ("jpeg".equalsIgnoreCase(formatName)
+                    || "jpg".equalsIgnoreCase(formatName))
             {
                 // This segment must be run before other meta operations,
                 // or else "IIOInvalidTreeException: Invalid node: app0JFIF"
@@ -348,7 +333,7 @@ public final class ImageIOUtil
         // PNG writer doesn't conform to the spec which is
         // "The width of a pixel, in millimeters"
         // but instead counts the pixels per millimeter
-        float res = "PNG".equals(formatName.toUpperCase())
+        float res = "PNG".equalsIgnoreCase(formatName)
                     ? dpi / 25.4f
                     : 25.4f / dpi;
 

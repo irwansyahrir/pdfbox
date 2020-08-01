@@ -34,20 +34,14 @@ public final class QuickSort
     {
     }
     
-    private static final Comparator<? extends Comparable> OBJCOMP = new Comparator<Comparable>()
-    {
-        @Override
-        public int compare(Comparable object1, Comparable object2)
-        {
-            return object1.compareTo(object2);
-        }
-    };
+    private static final Comparator<? extends Comparable> OBJCOMP = Comparable::compareTo;
 
     /**
      * Sorts the given list using the given comparator.
      * 
+     * @param <T> type of the objects to be sorted.
      * @param list list to be sorted
-     * @param cmp comparator used to compare the object swithin the list
+     * @param cmp comparator used to compare the objects within the list
      */
     public static <T> void sort(List<T> list, Comparator<T> cmp)
     {
@@ -62,6 +56,7 @@ public final class QuickSort
     /**
      * Sorts the given list using compareTo as comparator.
      * 
+     * @param <T> type of the objects to be sorted.
      * @param list list to be sorted
      */
     public static <T extends Comparable> void sort(List<T> list)

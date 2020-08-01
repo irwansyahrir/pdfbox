@@ -28,14 +28,12 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
-import javax.xml.bind.DatatypeConverter;
 import org.apache.pdfbox.cos.COSBase;
-import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
+import org.apache.pdfbox.pdmodel.common.PDMetadata;
 import org.apache.pdfbox.preflight.PreflightConstants;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
@@ -44,8 +42,9 @@ import org.apache.pdfbox.preflight.metadata.PDFAIdentificationValidation;
 import org.apache.pdfbox.preflight.metadata.RDFAboutAttributeConcordanceValidation;
 import org.apache.pdfbox.preflight.metadata.RDFAboutAttributeConcordanceValidation.DifferentRDFAboutException;
 import org.apache.pdfbox.preflight.metadata.SynchronizedMetaDataValidation;
+import org.apache.pdfbox.preflight.metadata.UniquePropertiesValidation;
 import org.apache.pdfbox.preflight.metadata.XpacketParsingException;
-import org.apache.pdfbox.preflight.utils.COSUtils;
+import org.apache.pdfbox.util.Hex;
 import org.apache.xmpbox.XMPMetadata;
 import org.apache.xmpbox.schema.XMPBasicSchema;
 import org.apache.xmpbox.type.BadFieldValueException;
@@ -64,10 +63,12 @@ public class MetadataValidationProcess extends AbstractProcess
         {
             PDDocument document = ctx.getDocument();
 
-            InputStream is = getXpacket(document.getDocument());
+            XMPMetadata metadata;
             DomXmpParser builder = new DomXmpParser();
-            XMPMetadata metadata = builder.parse(is);
-            is.close();
+            try (InputStream is = getXpacket(document))
+            {
+                metadata = builder.parse(is);
+            }
             ctx.setMetadata(metadata);
 
             // 6.7.5 no deprecated attribute in xpacket processing instruction
@@ -87,6 +88,10 @@ public class MetadataValidationProcess extends AbstractProcess
             // Call metadata synchronization checking
             addValidationErrors(ctx,
                     new SynchronizedMetaDataValidation().validateMetadataSynchronization(document, metadata));
+
+            // Call metadata uniqueness checking
+            addValidationErrors(ctx,
+                    new UniquePropertiesValidation().validatePropertiesUniqueness(document, metadata));
 
             // Call PDF/A Identifier checking
             addValidationErrors(ctx, new PDFAIdentificationValidation().validatePDFAIdentifer(metadata));
@@ -184,10 +189,7 @@ public class MetadataValidationProcess extends AbstractProcess
         {
             return;
         }
-        for (ThumbnailType tb : tbProp)
-        {
-            checkThumbnail(tb, ctx);
-        }
+        tbProp.forEach(tb -> checkThumbnail(tb, ctx));
     }
 
     private void checkThumbnail(ThumbnailType tb, PreflightContext ctx)
@@ -195,7 +197,7 @@ public class MetadataValidationProcess extends AbstractProcess
         byte[] binImage;
         try
         {
-            binImage = DatatypeConverter.parseBase64Binary(tb.getImage());
+            binImage = Hex.decodeBase64(tb.getImage());
         }
         catch (IllegalArgumentException e)
         {
@@ -232,7 +234,7 @@ public class MetadataValidationProcess extends AbstractProcess
         if (bim.getWidth() != tb.getWidth())
         {
             addValidationError(ctx, new ValidationError(PreflightConstants.ERROR_METADATA_FORMAT,
-                    "xapGImg:witdh does not match the actual base64-encoded thumbnail image data"));
+                    "xapGImg:width does not match the actual base64-encoded thumbnail image data"));
         }
     }
     
@@ -251,37 +253,37 @@ public class MetadataValidationProcess extends AbstractProcess
     /**
      * Return the xpacket from the dictionary's stream
      */
-    private static InputStream getXpacket(COSDocument cdocument) throws IOException, XpacketParsingException
+    private static InputStream getXpacket(PDDocument document)
+            throws IOException, XpacketParsingException
     {
-        COSObject catalog = cdocument.getCatalog();
-        COSBase cb = catalog.getDictionaryObject(COSName.METADATA);
-        if (cb == null)
+        PDDocumentCatalog catalog = document.getDocumentCatalog();
+        PDMetadata metadata = catalog.getMetadata();
+        if (metadata == null)
         {
+            COSBase metaObject = catalog.getCOSObject().getDictionaryObject(COSName.METADATA);
+            if (!(metaObject instanceof COSStream))
+            {
+                // the Metadata object isn't a stream
+                ValidationError error = new ValidationError(
+                        PreflightConstants.ERROR_METADATA_FORMAT, "Metadata is not a stream");
+                throw new XpacketParsingException("Failed while retrieving xpacket", error);
+            }
             // missing Metadata Key in catalog
             ValidationError error = new ValidationError(PreflightConstants.ERROR_METADATA_FORMAT,
                     "Missing Metadata Key in catalog");
             throw new XpacketParsingException("Failed while retrieving xpacket", error);
         }
-        // no filter key
-        COSDictionary metadataDictionnary = COSUtils.getAsDictionary(cb, cdocument);
-        if (metadataDictionnary.getItem(COSName.FILTER) != null)
+
+        if (metadata.getCOSObject().containsKey(COSName.FILTER))
         {
-            // should not be defined
-            ValidationError error = new ValidationError(PreflightConstants.ERROR_SYNTAX_STREAM_INVALID_FILTER,
-                    "Filter specified in metadata dictionnary");
-            throw new XpacketParsingException("Failed while retrieving xpacket", error);
-        }
-        
-        if (!(metadataDictionnary instanceof COSStream))
-        {
-            // missing Metadata Key in catalog
-            ValidationError error = new ValidationError(PreflightConstants.ERROR_METADATA_FORMAT,
-                    "Metadata is not a stream");
+            // filter key should not be defined
+            ValidationError error = new ValidationError(
+                    PreflightConstants.ERROR_SYNTAX_STREAM_INVALID_FILTER,
+                    "Filter specified in metadata dictionary");
             throw new XpacketParsingException("Failed while retrieving xpacket", error);
         }
 
-        COSStream stream = (COSStream) metadataDictionnary;
-        return stream.createInputStream();
+        return metadata.exportXMPMetadata();
     }
 
     /**
@@ -294,7 +296,7 @@ public class MetadataValidationProcess extends AbstractProcess
     {
         List<ValidationError> ve = new ArrayList<>();
         List<?> filters = doc.getDocumentCatalog().getMetadata().getFilters();
-        if (filters != null && !filters.isEmpty())
+        if (!filters.isEmpty())
         {
             ve.add(new ValidationError(PreflightConstants.ERROR_METADATA_MAIN,
                     "Using stream filter on metadata dictionary is forbidden"));

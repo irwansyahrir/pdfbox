@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 import org.apache.pdfbox.pdmodel.common.COSObjectable;
 
@@ -411,6 +412,48 @@ public class COSArray extends COSBase implements Iterable<COSBase>, COSUpdateInf
      * {@inheritDoc}
      */
     @Override
+    public boolean equals(Object o) {
+
+        if (o == this)
+        {
+            return true;
+        }
+
+        if (!(o instanceof COSArray))
+        {
+            return false;
+        }
+
+        COSArray toBeCompared = (COSArray) o;
+
+        if (toBeCompared.size() != size())
+        {
+            return false;
+        }
+
+        for (int i=0; i<size(); i++)
+        {
+            if (!(get(i).equals(toBeCompared.get(i))))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+        return Objects.hash(objects, needToBeUpdated);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public String toString()
     {
         return "COSArray{" + objects + "}";
@@ -459,12 +502,8 @@ public class COSArray extends COSBase implements Iterable<COSBase>, COSUpdateInf
         for (int i = 0; retval < 0 && i < this.size(); i++)
         {
             COSBase item = this.get(i);
-            if (item.equals(object))
-            {
-                retval = i;
-                break;
-            }
-            else if (item instanceof COSObject && ((COSObject) item).getObject().equals(object))
+            if (item.equals(object) ||
+                item instanceof COSObject && ((COSObject) item).getObject().equals(object))
             {
                 retval = i;
                 break;
@@ -520,6 +559,15 @@ public class COSArray extends COSBase implements Iterable<COSBase>, COSUpdateInf
       return needToBeUpdated;
     }
     
+    /**
+     * {@inheritDoc}
+     *<p>
+     * Although the state is set, it has no effect on COSWriter behavior because arrays are always
+     * written as direct object. If an array is to be part of an incremental save, then the method
+     * should be called for its holding dictionary.
+     *
+     * @param flag
+     */
     @Override
     public void setNeedToBeUpdated(boolean flag) 
     {

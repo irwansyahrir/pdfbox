@@ -16,19 +16,16 @@
  */
 package org.apache.pdfbox.pdfparser;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.io.RandomAccessBuffer;
-import org.apache.pdfbox.io.RandomAccessFile;
+import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.pdmodel.fdf.FDFDocument;
 
 public class FDFParser extends COSParser
 {
@@ -37,40 +34,13 @@ public class FDFParser extends COSParser
     /**
      * Constructs parser for given file using memory buffer.
      * 
-     * @param filename the filename of the pdf to be parsed
+     * @param source the source of the pdf to be parsed
      * 
      * @throws IOException If something went wrong.
      */
-    public FDFParser(String filename) throws IOException
+    public FDFParser(RandomAccessRead source) throws IOException
     {
-        this(new File(filename));
-    }
-
-    /**
-     * Constructs parser for given file using given buffer for temporary
-     * storage.
-     * 
-     * @param file the pdf to be parsed
-     * 
-     * @throws IOException If something went wrong.
-     */
-    public FDFParser(File file) throws IOException
-    {
-        super(new RandomAccessFile(file, "r"));
-        fileLen = file.length();
-        init();
-    }
-
-    /**
-     * Constructor.
-     * 
-     * @param input input stream representing the pdf.
-     * @throws IOException If something went wrong.
-     */
-    public FDFParser(InputStream input) throws IOException
-    {
-        super(new RandomAccessBuffer(input));
-        fileLen = source.length();
+        super(source);
         init();
     }
 
@@ -86,7 +56,7 @@ public class FDFParser extends COSParser
         return dictionary.containsKey(COSName.FDF);
     }
 
-    private void init() throws IOException
+    private void init()
     {
         String eofLookupRangeStr = System.getProperty(SYSPROP_EOFLOOKUPRANGE);
         if (eofLookupRangeStr != null)
@@ -101,7 +71,7 @@ public class FDFParser extends COSParser
                         + " does not contain an integer value, but: '" + eofLookupRangeStr + "'");
             }
         }
-        document = new COSDocument();
+        document = new COSDocument(this);
     }
 
     /**
@@ -115,24 +85,21 @@ public class FDFParser extends COSParser
     {
         COSDictionary trailer = retrieveTrailer();
     
-        COSBase rootObject = parseTrailerValuesDynamically(trailer);
-    
-        // resolve all objects
-        // A FDF doesn't have a catalog, all FDF fields are within the root object
-        if (rootObject instanceof COSDictionary)
+        COSDictionary root = trailer.getCOSDictionary(COSName.ROOT);
+        if (root == null)
         {
-            parseDictObjects((COSDictionary) rootObject, (COSName[]) null);
+            throw new IOException("Missing root object specification in trailer.");
         }
         initialParseDone = true;
     }
 
     /**
-     * This will parse the stream and populate the COSDocument object.
+     * This will parse the stream and populate the FDFDocument object.
      *
-     * @throws IOException If there is an error reading from the stream or corrupt data
-     * is found.
+     * @return the parsed FDFDocument
+     * @throws IOException If there is an error reading from the stream or corrupt data is found.
      */
-    public void parse() throws IOException
+    public FDFDocument parse() throws IOException
     {
          // set to false if all is processed
          boolean exceptionOccurred = true; 
@@ -144,6 +111,7 @@ public class FDFParser extends COSParser
             }
             initialParse();
             exceptionOccurred = false;
+            return new FDFDocument(document);
         }
         finally
         {

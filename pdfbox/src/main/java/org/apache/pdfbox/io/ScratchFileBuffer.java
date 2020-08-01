@@ -324,6 +324,10 @@ class ScratchFileBuffer implements RandomAccess
             }
             
             int newPagePosition = (int) (seekToPosition / pageSize);
+            if (seekToPosition % pageSize == 0 && seekToPosition == size)
+            {
+                newPagePosition--; // PDFBOX-4756: Prevent seeking a non-yet-existent page...
+            }
             
             currentPage = pageHandler.readPage(pageIndexes[newPagePosition]);
             currentPagePositionInPageIndexes = newPagePosition;
@@ -362,28 +366,6 @@ class ScratchFileBuffer implements RandomAccess
     public void rewind(int bytes) throws IOException
     {
         seek(currentPageOffset + positionInPage - bytes);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public byte[] readFully(int len) throws IOException
-    {
-        byte[] b = new byte[len];
-
-        int n = 0;
-        do
-        {
-            int count = read(b, n, len - n);
-            if (count < 0)
-            {
-                throw new EOFException();
-            }
-            n += count;
-        } while (n < len);
-
-        return b;
     }
 
     /**
@@ -522,4 +504,11 @@ class ScratchFileBuffer implements RandomAccess
             super.finalize();
         }
     }
+
+    @Override
+    public RandomAccessReadView createView(long startPosition, long streamLength) throws IOException
+    {
+        return new RandomAccessReadView(this, startPosition, streamLength);
+    }
+
 }

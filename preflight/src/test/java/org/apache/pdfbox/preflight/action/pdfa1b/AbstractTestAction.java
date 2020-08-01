@@ -21,9 +21,10 @@
 
 package org.apache.pdfbox.preflight.action.pdfa1b;
 
+import java.io.File;
 import java.util.List;
-import javax.activation.DataSource;
-import javax.activation.FileDataSource;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -49,10 +50,10 @@ public abstract class AbstractTestAction
      */
     protected PreflightContext createContext() throws Exception
     {
-        DataSource ds = new FileDataSource("src/test/resources/pdfa-with-annotations-square.pdf");
-        PDDocument doc = PDDocument.load(ds.getInputStream());
+        PDDocument doc = Loader
+                .loadPDF(new File("src/test/resources/pdfa-with-annotations-square.pdf"));
         PreflightDocument preflightDocument = new PreflightDocument(doc.getDocument(), Format.PDF_A1B);
-        PreflightContext ctx = new PreflightContext(ds);
+        PreflightContext ctx = new PreflightContext();
         ctx.setDocument(preflightDocument);
         preflightDocument.setContext(ctx);
         return ctx;
@@ -108,12 +109,12 @@ public abstract class AbstractTestAction
             abstractActionManager.valid();
         }
 
+        List<ValidationError> errors = ctx.getDocument().getValidationErrors();
         // check the result
         if (!valid)
         {
-            List<ValidationError> errors = ctx.getDocument().getResult().getErrorsList();
             assertFalse(errors.isEmpty());
-            if (expectedCode != null || !"".equals(expectedCode))
+            if (expectedCode != null && !expectedCode.isEmpty())
             {
                 boolean found = false;
                 for (ValidationError err : errors)
@@ -129,11 +130,7 @@ public abstract class AbstractTestAction
         }
         else
         {
-            if (ctx.getDocument().getResult() != null)
-            {
-                List<ValidationError> errors = ctx.getDocument().getResult().getErrorsList();
-                assertTrue(errors.isEmpty());
-            }
+            assertTrue(errors.isEmpty());
         }
         ctx.getDocument().close();
     }

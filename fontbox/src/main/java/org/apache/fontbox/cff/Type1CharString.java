@@ -16,7 +16,6 @@
  */
 package org.apache.fontbox.cff;
 
-import java.awt.Point;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Point2D;
@@ -42,13 +41,14 @@ public class Type1CharString
     private static final Log LOG = LogFactory.getLog(Type1CharString.class);
 
     private Type1CharStringReader font;
-    private final String fontName, glyphName;
+    private final String fontName;
+    private final String glyphName;
     private GeneralPath path = null;
     private int width = 0;
     private Point2D.Float leftSideBearing = null;
     private Point2D.Float current = null;
     private boolean isFlex = false;
-    private final List<Point.Float> flexPoints = new ArrayList<>();
+    private final List<Point2D.Float> flexPoints = new ArrayList<>();
     protected List<Object> type1Sequence;
     protected int commandCount;
 
@@ -153,13 +153,7 @@ public class Type1CharString
         path = new GeneralPath();
         leftSideBearing = new Point2D.Float(0, 0);
         width = 0;
-        CharStringHandler handler = new CharStringHandler() {
-            @Override
-            public List<Number> handleCommand(List<Number> numbers, CharStringCommand command)
-            {
-                return Type1CharString.this.handleCommand(numbers, command);
-            }
-        };
+        CharStringHandler handler = Type1CharString.this::handleCommand;
         handler.handleSequence(type1Sequence);
     }
 
@@ -184,7 +178,7 @@ public class Type1CharString
         }
         else if ("vmoveto".equals(name))
         {
-            if (numbers.size() >= 1)
+            if (!numbers.isEmpty())
             {
                 if (isFlex)
                 {
@@ -199,7 +193,7 @@ public class Type1CharString
         }
         else if ("hmoveto".equals(name))
         {
-            if (numbers.size() >= 1)
+            if (!numbers.isEmpty())
             {
                 if (isFlex)
                 {
@@ -221,14 +215,14 @@ public class Type1CharString
         }
         else if ("hlineto".equals(name))
         {
-            if (numbers.size() >= 1)
+            if (!numbers.isEmpty())
             {
                 rlineTo(numbers.get(0), 0);
             }
         }
         else if ("vlineto".equals(name))
         {
-            if (numbers.size() >= 1)
+            if (!numbers.isEmpty())
             {
                 rlineTo(0, numbers.get(0));
             }
@@ -295,7 +289,7 @@ public class Type1CharString
         }
         else if ("callothersubr".equals(name))
         {
-            if (numbers.size() >= 1)
+            if (!numbers.isEmpty())
             {
                 callothersubr(numbers.get(0).intValue());
             }
@@ -370,12 +364,12 @@ public class Type1CharString
             }
 
             // reference point is relative to start point
-            Point.Float reference = flexPoints.get(0);
+            Point2D.Float reference = flexPoints.get(0);
             reference.setLocation(current.getX() + reference.getX(),
                                   current.getY() + reference.getY());
 
             // first point is relative to reference point
-            Point.Float first = flexPoints.get(1);
+            Point2D.Float first = flexPoints.get(1);
             first.setLocation(reference.getX() + first.getX(), reference.getY() + first.getY());
 
             // make the first point relative to the start point
@@ -498,7 +492,7 @@ public class Type1CharString
         {
             Type1CharString accent = font.getType1CharString(accentName);
             AffineTransform at = AffineTransform.getTranslateInstance(
-                    leftSideBearing.getX() + adx.floatValue(),
+                    leftSideBearing.getX() + adx.floatValue() - asb.floatValue(),
                     leftSideBearing.getY() + ady.floatValue());
             path.append(accent.getPath().getPathIterator(at), false);
         }

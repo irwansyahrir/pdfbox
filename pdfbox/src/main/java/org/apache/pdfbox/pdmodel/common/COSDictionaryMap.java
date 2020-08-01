@@ -127,7 +127,7 @@ public class COSDictionaryMap<K,V> implements Map<K,V>
     @Override
     public void putAll(Map<? extends K, ? extends V> t)
     {
-        throw new RuntimeException( "Not yet implemented" );
+        throw new UnsupportedOperationException("Not yet implemented");
     }
 
     /**
@@ -211,12 +211,11 @@ public class COSDictionaryMap<K,V> implements Map<K,V>
     public static COSDictionary convert(Map<String, ?> someMap)
     {
         COSDictionary dic = new COSDictionary();
-        for (Entry<String, ?> entry : someMap.entrySet())
+        someMap.forEach((name, objectable) ->
         {
-            String name = entry.getKey();
-            COSObjectable object = (COSObjectable) entry.getValue();
-            dic.setItem( COSName.getPDFName( name ), object.getCOSObject() );
-        }
+            COSObjectable object = (COSObjectable) objectable;
+            dic.setItem(COSName.getPDFName(name), object.getCOSObject());
+        });
         return dic;
     }
 

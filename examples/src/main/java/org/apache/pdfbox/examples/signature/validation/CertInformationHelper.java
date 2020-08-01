@@ -17,25 +17,18 @@
 package org.apache.pdfbox.examples.signature.validation;
 
 import java.io.IOException;
-import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.PublicKey;
-import java.security.SignatureException;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.util.Enumeration;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.examples.signature.validation.CertInformationCollector.CertSignatureInformation;
 import org.apache.pdfbox.util.Hex;
-import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DEROctetString;
-import org.bouncycastle.asn1.DERTaggedObject;
-import org.bouncycastle.asn1.DLSequence;
+import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.X509ObjectIdentifiers;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
@@ -69,63 +62,6 @@ public class CertInformationHelper
     }
 
     /**
-     * Checks whether the given certificate is self-signed (root).
-     * 
-     * @param cert to be checked
-     * @return true when it is a self-signed certificate
-     * @throws CertificateProccessingException containing the cause, on multiple exception with the given data
-     */
-    public static boolean isSelfSigned(X509Certificate cert) throws CertificateProccessingException
-    {
-        return verify(cert, cert.getPublicKey());
-    }
-
-    /**
-     * Verifies whether the certificate is signed by the given public key. Can be done to check
-     * signature chain. Idea and code are from Julius Musseau at:
-     * https://stackoverflow.com/a/10822177/2497581
-     *
-     * @param cert Child certificate to check
-     * @param key Fathers public key to check
-     * @return true when the certificate is signed by the public key
-     * @throws CertificateProccessingException containing the cause, on multiple exception with the
-     * given data
-     */
-    public static boolean verify(X509Certificate cert, PublicKey key)
-            throws CertificateProccessingException
-    {
-        try
-        {
-            String sigAlg = cert.getSigAlgName();
-            String keyAlg = key.getAlgorithm();
-            sigAlg = sigAlg != null ? sigAlg.trim().toUpperCase() : "";
-            keyAlg = keyAlg != null ? keyAlg.trim().toUpperCase() : "";
-            if (keyAlg.length() >= 2 && sigAlg.endsWith(keyAlg))
-            {
-                try
-                {
-                    cert.verify(key);
-                    return true;
-                }
-                catch (SignatureException se)
-                {
-                    LOG.debug("Couldn't get signature information - returning false", se);
-                    return false;
-                }
-            }
-            else
-            {
-                return false;
-            }
-        }
-        catch (InvalidKeyException | CertificateException | NoSuchAlgorithmException
-                | NoSuchProviderException e)
-        {
-            throw new CertificateProccessingException(e);
-        }
-    }
-
-    /**
      * Extracts authority information access extension values from the given data. The Data
      * structure has to be implemented as described in RFC 2459, 4.2.2.1.
      *
@@ -142,19 +78,19 @@ public class CertInformationHelper
         {
             // AccessDescription
             ASN1Sequence obj = (ASN1Sequence) objects.nextElement();
-            ASN1ObjectIdentifier oid = (ASN1ObjectIdentifier) obj.getObjectAt(0);
+            ASN1Encodable oid = obj.getObjectAt(0);
             // accessLocation
-            DERTaggedObject location = (DERTaggedObject) obj.getObjectAt(1);
+            ASN1TaggedObject location = (ASN1TaggedObject) obj.getObjectAt(1);
 
-            if (oid.equals(X509ObjectIdentifiers.id_ad_ocsp)
+            if (X509ObjectIdentifiers.id_ad_ocsp.equals(oid)
                     && location.getTagNo() == GeneralName.uniformResourceIdentifier)
             {
-                DEROctetString url = (DEROctetString) location.getObject();
+                ASN1OctetString url = (ASN1OctetString) location.getObject();
                 certInfo.setOcspUrl(new String(url.getOctets()));
             }
-            else if (oid.equals(X509ObjectIdentifiers.id_ad_caIssuers))
+            else if (X509ObjectIdentifiers.id_ad_caIssuers.equals(oid))
             {
-                DEROctetString uri = (DEROctetString) location.getObject();
+                ASN1OctetString uri = (ASN1OctetString) location.getObject();
                 certInfo.setIssuerUrl(new String(uri.getOctets()));
             }
         }
@@ -175,14 +111,48 @@ public class CertInformationHelper
 
         while (objects.hasMoreElements())
         {
-            DLSequence obj = (DLSequence) objects.nextElement();
+            Object obj = objects.nextElement();
+            if (obj instanceof ASN1Sequence)
+            {
+                String url = extractCrlUrlFromSequence((ASN1Sequence) obj);
+                if (url != null)
+                {
+                    return url;
+                }
+            }
+        }
+        return null;
+    }
 
-            DERTaggedObject derTagged = (DERTaggedObject) obj.getObjectAt(0);
-            derTagged = (DERTaggedObject) derTagged.getObject();
-            derTagged = (DERTaggedObject) derTagged.getObject();
-            DEROctetString uri = (DEROctetString) derTagged.getObject();
+    private static String extractCrlUrlFromSequence(ASN1Sequence sequence)
+    {
+        ASN1TaggedObject taggedObject = (ASN1TaggedObject) sequence.getObjectAt(0);
+        taggedObject = (ASN1TaggedObject) taggedObject.getObject();
+        if (taggedObject.getObject() instanceof ASN1TaggedObject)
+        {
+            taggedObject = (ASN1TaggedObject) taggedObject.getObject();
+        }
+        else if (taggedObject.getObject() instanceof ASN1Sequence)
+        {
+            // multiple URLs (we take the first)
+            ASN1Sequence seq = (ASN1Sequence) taggedObject.getObject();
+            if (seq.getObjectAt(0) instanceof ASN1TaggedObject)
+            {
+                taggedObject = (ASN1TaggedObject) seq.getObjectAt(0);
+            }
+            else
+            {
+                return null;
+            }
+        }
+        else
+        {
+            return null;
+        }
+        if (taggedObject.getObject() instanceof ASN1OctetString)
+        {
+            ASN1OctetString uri = (ASN1OctetString) taggedObject.getObject();
             String url = new String(uri.getOctets());
-            // TODO Check for: DistributionPoint ::= SEQUENCE (see RFC 2459), multiples can be possible.
 
             // return first http(s)-Url for crl
             if (url.startsWith("http"))
@@ -190,6 +160,7 @@ public class CertInformationHelper
                 return url;
             }
         }
+        // else happens with http://blogs.adobe.com/security/SampleSignedPDFDocument.pdf
         return null;
     }
 }

@@ -23,8 +23,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
-import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -126,10 +126,7 @@ public final class TTFSubsetter
      */
     public void addAll(Set<Integer> unicodeSet)
     {
-        for (int unicode : unicodeSet)
-        {
-            add(unicode);
-        }
+        unicodeSet.forEach(this::add);
     }
 
     /**
@@ -185,7 +182,7 @@ public final class TTFSubsetter
         }
         checksum &= 0xffffffffL;
 
-        byte[] tagbytes = tag.getBytes("US-ASCII");
+        byte[] tagbytes = tag.getBytes(StandardCharsets.US_ASCII);
 
         out.write(tagbytes, 0, 4);
         out.writeInt((int)checksum);
@@ -291,14 +288,7 @@ public final class TTFSubsetter
         }
 
         List<NameRecord> nameRecords = name.getNameRecords();
-        int numRecords = 0;
-        for (NameRecord record : nameRecords)
-        {
-            if (shouldCopyNameRecord(record))
-            {
-                numRecords++;
-            }
-        }
+        int numRecords = (int) nameRecords.stream().filter(this::shouldCopyNameRecord).count();
         writeUint16(out, 0);
         writeUint16(out, numRecords);
         writeUint16(out, 2*3 + 2*6 * numRecords);
@@ -316,27 +306,23 @@ public final class TTFSubsetter
             {
                 int platform = record.getPlatformId();
                 int encoding = record.getPlatformEncodingId();
-                String charset = "ISO-8859-1";
+                Charset charset = StandardCharsets.ISO_8859_1;
 
                 if (platform == CmapTable.PLATFORM_WINDOWS &&
                     encoding == CmapTable.ENCODING_WIN_UNICODE_BMP)
                 {
-                    charset = "UTF-16BE";
+                    charset = StandardCharsets.UTF_16BE;
                 }
                 else if (platform == 2) // ISO [deprecated]=
                 {
                     if (encoding == 0) // 7-bit ASCII
                     {
-                        charset = "US-ASCII";
+                        charset = StandardCharsets.US_ASCII;
                     }
                     else if (encoding == 1) // ISO 10646=
                     {
                         //not sure is this is correct??
-                        charset = "UTF16-BE";
-                    }
-                    else if (encoding == 2) // ISO 8859-1
-                    {
-                        charset = "ISO-8859-1";
+                        charset = StandardCharsets.UTF_16BE;
                     }
                 }
                 String value = record.getString();
@@ -439,7 +425,7 @@ public final class TTFSubsetter
         writeUint32(out, 0);
         writeUint32(out, 0);
 
-        out.write(os2.getAchVendId().getBytes("US-ASCII"));
+        out.write(os2.getAchVendId().getBytes(StandardCharsets.US_ASCII));
 
         writeUint16(out, os2.getFsSelection());
         writeUint16(out, uniToGID.firstKey());
@@ -736,7 +722,7 @@ public final class TTFSubsetter
         // encoding record
         writeUint16(out, CmapTable.PLATFORM_WINDOWS); // platformID
         writeUint16(out, CmapTable.ENCODING_WIN_UNICODE_BMP); // platformSpecificID
-        writeUint32(out, 4 * 2 + 4); // offset
+        writeUint32(out, 12); // offset 4 * 2 + 4
 
         // build Format 4 subtable (Unicode BMP)
         Iterator<Entry<Integer, Integer>> it = uniToGID.entrySet().iterator();
@@ -877,12 +863,7 @@ public final class TTFSubsetter
             else
             {
                 // the name will be written explicitly
-                Integer ordinal = names.get(name);
-                if (ordinal == null)
-                {
-                    ordinal = names.size();
-                    names.put(name, ordinal);
-                }
+                Integer ordinal = names.computeIfAbsent(name, dummy -> names.size());
                 writeUint16(out, 258 + ordinal);
             }
         }
@@ -890,7 +871,7 @@ public final class TTFSubsetter
         // names[numberNewGlyphs]
         for (String name : names.keySet())
         {
-            byte[] buf = name.getBytes(Charset.forName("US-ASCII"));
+            byte[] buf = name.getBytes(StandardCharsets.US_ASCII);
             writeUint8(out, buf.length);
             out.write(buf);
         }
@@ -933,7 +914,7 @@ public final class TTFSubsetter
                 if (glyphId <= lastgid)
                 {
                     // copy width and lsb
-                    offset = glyphId * 4;
+                    offset = glyphId * 4l;
                     lastOffset = copyBytes(is, bos, offset, lastOffset, 4);
                 }
                 else 
@@ -943,14 +924,14 @@ public final class TTFSubsetter
                         // one time only: copy width from lastgid, whose width applies
                         // to all later glyphs
                         needLastGidWidth = false;
-                        offset = lastgid * 4;
+                        offset = lastgid * 4l;
                         lastOffset = copyBytes(is, bos, offset, lastOffset, 2);
 
                         // then go on with lsb from actual glyph (lsb are individual even in monotype fonts)
                     }
 
                     // copy lsb only, as we are beyond numOfHMetrics
-                    offset = h.getNumberOfHMetrics() * 4 + (glyphId - h.getNumberOfHMetrics()) * 2;
+                    offset = h.getNumberOfHMetrics() * 4l + (glyphId - h.getNumberOfHMetrics()) * 2l;
                     lastOffset = copyBytes(is, bos, offset, lastOffset, 2);
                 }
             }
@@ -1103,7 +1084,7 @@ public final class TTFSubsetter
     private void writeLongDateTime(DataOutputStream out, Calendar calendar) throws IOException
     {
         // inverse operation of TTFDataStream.readInternationalDate()
-        Calendar cal = GregorianCalendar.getInstance(TimeZone.getTimeZone("UTC"));
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.set(1904, 0, 1, 0, 0, 0);
         cal.set(Calendar.MILLISECOND, 0);
         long millisFor1904 = cal.getTimeInMillis();

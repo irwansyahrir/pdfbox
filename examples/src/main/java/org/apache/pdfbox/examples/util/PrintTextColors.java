@@ -21,6 +21,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColor;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorN;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorSpace;
@@ -87,7 +89,7 @@ public class PrintTextColors extends PDFTextStripper
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 PDFTextStripper stripper = new PrintTextColors();
                 stripper.setSortByPosition(true);

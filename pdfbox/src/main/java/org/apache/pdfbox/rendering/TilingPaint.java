@@ -46,7 +46,7 @@ import org.apache.pdfbox.util.Matrix;
 class TilingPaint implements Paint
 {
     private static final Log LOG = LogFactory.getLog(TilingPaint.class);
-    private final TexturePaint paint;
+    private final Paint paint;
     private final Matrix patternMatrix;
     private static final int MAXEDGE;
     private static final String DEFAULTMAXEDGE = "3000";
@@ -169,9 +169,8 @@ class TilingPaint implements Paint
                 Math.abs(patternMatrix.getScalingFactorY()));
 
         // move origin to (0,0)
-        newPatternMatrix.concatenate(
-                Matrix.getTranslateInstance(-pattern.getBBox().getLowerLeftX(),
-                        -pattern.getBBox().getLowerLeftY()));
+        PDRectangle bBox = pattern.getBBox();
+        newPatternMatrix.translate(-bBox.getLowerLeftX(), -bBox.getLowerLeftY());
 
         // render using PageDrawer
         drawer.drawTilingPattern(graphics, pattern, colorSpace, color, newPatternMatrix);
@@ -186,7 +185,7 @@ class TilingPaint implements Paint
      */
     private static int ceiling(double num)
     {
-        BigDecimal decimal = new BigDecimal(num);
+        BigDecimal decimal = BigDecimal.valueOf(num);
         decimal = decimal.setScale(5, RoundingMode.CEILING); // 5 decimal places of accuracy
         return decimal.intValue();
     }

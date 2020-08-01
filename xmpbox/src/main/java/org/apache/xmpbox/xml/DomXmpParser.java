@@ -24,11 +24,12 @@ package org.apache.xmpbox.xml;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Stack;
+import java.util.Deque;
 import java.util.StringTokenizer;
 
 import javax.xml.XMLConstants;
@@ -411,7 +412,6 @@ public class DomXmpParser
     }
 
     private void manageSimpleType(XMPMetadata xmp, Element property, Types type, ComplexPropertyContainer container)
-            throws XmpParsingException
     {
         TypeMapping tm = xmp.getTypeMapping();
         String prefix = property.getPrefix();
@@ -514,10 +514,28 @@ public class DomXmpParser
             // no child
             String text = liElement.getTextContent();
             TypeMapping tm = xmp.getTypeMapping();
-            AbstractSimpleProperty sp = tm.instanciateSimpleProperty(descriptor.getNamespaceURI(),
-                    descriptor.getPrefix(), descriptor.getLocalPart(), text, type);
-            loadAttributes(sp, liElement);
-            return sp;
+            if (type.isSimple())
+            {
+                AbstractField af = tm.instanciateSimpleProperty(descriptor.getNamespaceURI(),
+                        descriptor.getPrefix(), descriptor.getLocalPart(), text, type);
+                loadAttributes(af, liElement);
+                return af;
+            }
+            else
+            {
+                // PDFBOX-4325: assume it is structured
+                AbstractField af;
+                try
+                {
+                    af = tm.instanciateStructuredType(type, descriptor.getLocalPart());
+                }
+                catch (BadFieldValueException ex)
+                {
+                    throw new XmpParsingException(ErrorType.InvalidType, "Parsing of structured type failed", ex);
+                }
+                loadAttributes(af, liElement);
+                return af;
+            }
         }
     }
 
@@ -819,10 +837,7 @@ public class DomXmpParser
         }
 
         // now remove the child nodes
-        for (Node node : forDeletion)
-        {
-        	root.removeChild(node);
-        }
+        forDeletion.forEach(root::removeChild);
     }
 
     private AbstractStructuredType instanciateStructured(TypeMapping tm, Types type, String name,
@@ -877,8 +892,7 @@ public class DomXmpParser
 
     protected static class NamespaceFinder
     {
-
-        private final Stack<Map<String, String>> stack = new Stack<>();
+        private final Deque<Map<String, String>> stack = new ArrayDeque<>();
 
         protected void push(Element description)
         {
@@ -903,16 +917,7 @@ public class DomXmpParser
 
         protected boolean containsNamespace(String namespace)
         {
-            for (int i = stack.size() - 1; i >= 0; i--)
-            {
-                Map<String, String> map = stack.get(i);
-                if (map.containsValue(namespace))
-                {
-                    return true;
-                }
-            }
-            // else namespace not found
-            return false;
+            return stack.stream().anyMatch(map -> map.containsValue(namespace));
         }
 
     }

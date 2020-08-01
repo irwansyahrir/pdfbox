@@ -82,13 +82,7 @@ public class Type2CharString extends Type1CharString
     {
         type1Sequence = new ArrayList<>();
         pathCount = 0;
-        CharStringHandler handler = new CharStringHandler() {
-            @Override
-            public List<Number> handleCommand(List<Number> numbers, CharStringCommand command)
-            {
-                return Type2CharString.this.handleCommand(numbers, command);
-            }
-        };
+        CharStringHandler handler = Type2CharString.this::handleCommand;
         handler.handleSequence(sequence);
     }
 
@@ -106,14 +100,17 @@ public class Type2CharString extends Type1CharString
         switch (name)
         {
             case "hstem":
+            case "hstemhm":
                 numbers = clearStack(numbers, numbers.size() % 2 != 0);
                 expandStemHints(numbers, true);
                 break;
             case "vstem":
+            case "vstemhm":
                 numbers = clearStack(numbers, numbers.size() % 2 != 0);
                 expandStemHints(numbers, false);
                 break;
             case "vmoveto":
+            case "hmoveto":
                 numbers = clearStack(numbers, numbers.size() > 1);
                 markPath();
                 addCommand(numbers, command);
@@ -149,12 +146,7 @@ public class Type2CharString extends Type1CharString
                 markPath();
                 addCommand(numbers, command);
                 break;
-            case "hmoveto":
-                numbers = clearStack(numbers, numbers.size() > 1);
-                markPath();
-                addCommand(numbers, command);
-                break;
-            case "vhcurveto":
+           case "vhcurveto":
                 drawAlternatingCurve(numbers, false);
                 break;
             case "hvcurveto":
@@ -202,21 +194,13 @@ public class Type2CharString extends Type1CharString
                 addCommandList(Arrays.asList(first, second), new CharStringCommand(8));
                 break;
             }
-            case "hstemhm":
-                numbers = clearStack(numbers, numbers.size() % 2 != 0);
-                expandStemHints(numbers, true);
-                break;
             case "hintmask":
             case "cntrmask":
                 numbers = clearStack(numbers, numbers.size() % 2 != 0);
-                if (numbers.size() > 0)
+                if (!numbers.isEmpty())
                 {
                     expandStemHints(numbers, false);
                 }
-                break;
-            case "vstemhm":
-                numbers = clearStack(numbers, numbers.size() % 2 != 0);
-                expandStemHints(numbers, false);
                 break;
             case "rcurveline":
                 if (numbers.size() >= 2)
@@ -255,14 +239,13 @@ public class Type2CharString extends Type1CharString
         {
             if (flag)
             {
-                addCommand(Arrays.asList((Number) 0f, numbers.get(0).floatValue() + nominalWidthX),
+                addCommand(Arrays.asList(0, numbers.get(0).floatValue() + nominalWidthX),
                         new CharStringCommand(13));
                 numbers = numbers.subList(1, numbers.size());
             }
             else
             {
-                addCommand(Arrays.asList((Number) 0f, defWidthX),
-                        new CharStringCommand(13));
+                addCommand(Arrays.asList(0, defWidthX), new CharStringCommand(13));
             }
         }
         return numbers;
@@ -301,7 +284,7 @@ public class Type2CharString extends Type1CharString
 
     private void drawAlternatingLine(List<Number> numbers, boolean horizontal)
     {
-        while (numbers.size() > 0)
+        while (!numbers.isEmpty())
         {
             addCommand(numbers.subList(0, 1), new CharStringCommand(
                     horizontal ? 6 : 7));
@@ -361,10 +344,7 @@ public class Type2CharString extends Type1CharString
 
     private void addCommandList(List<List<Number>> numbers, CharStringCommand command)
     {
-        for (List<Number> ns : numbers)
-        {
-            addCommand(ns, command);
-        }
+        numbers.forEach(ns -> addCommand(ns, command));
     }
 
     private void addCommand(List<Number> numbers, CharStringCommand command)

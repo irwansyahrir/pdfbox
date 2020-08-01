@@ -21,31 +21,25 @@
 
 package org.apache.pdfbox.preflight.process;
 
-import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_DAMAGED;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_FX_KEYS;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_INVALID_FILTER;
-import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_LENGTH_INVALID;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_STREAM_LENGTH_MISSING;
 
-import java.io.IOException;
-import java.io.InputStream;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.cos.COSObject;
-import org.apache.pdfbox.cos.COSStream;
-import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.cos.COSObjectKey;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
 import org.apache.pdfbox.preflight.exception.ValidationException;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 import org.apache.pdfbox.preflight.utils.FilterHelper;
-import org.apache.pdfbox.util.Charsets;
 
 public class StreamValidationProcess extends AbstractProcess
 {
@@ -53,33 +47,33 @@ public class StreamValidationProcess extends AbstractProcess
     @Override
     public void validate(PreflightContext ctx) throws ValidationException
     {
-        PDDocument pdfDoc = ctx.getDocument();
-        COSDocument cDoc = pdfDoc.getDocument();
+        COSDocument cosDocument = ctx.getDocument().getDocument();
 
-        List<?> lCOSObj = cDoc.getObjects();
-        for (Object o : lCOSObj)
+        // get all keys with a positive offset in ascending order to read the pdf linear
+        List<COSObjectKey> objectKeys = cosDocument.getXrefTable().entrySet().stream() //
+                .filter(e -> e.getValue() > 0L) //
+                .sorted(Comparator.comparing(Entry::getValue)) //
+                .map(Entry::getKey) //
+                .collect(Collectors.toList());
+
+        for (COSObjectKey objectKey : objectKeys)
         {
-            COSObject cObj = (COSObject) o;
-            
             // If this object represents a Stream, the Dictionary must contain the Length key
-            COSBase cBase = cObj.getObject();
+            COSBase cBase = cosDocument.getObjectFromPool(objectKey).getObject();
             if (cBase instanceof COSStream)
             {
-                validateStreamObject(ctx, cObj);
+                validateStreamObject(ctx, cBase);
             }
         }
     }
 
-    public void validateStreamObject(PreflightContext context, COSObject cObj) throws ValidationException
+    public void validateStreamObject(PreflightContext context, COSBase cObj)
     {
-        COSStream streamObj = (COSStream) cObj.getObject();
-
+        COSStream streamObj = (COSStream) cObj;
         // ---- Check dictionary entries
         // ---- Only the Length entry is mandatory
         // ---- In a PDF/A file, F, FFilter and FDecodeParms are forbidden
         checkDictionaryEntries(context, streamObj);
-        // ---- check stream length
-        checkStreamLength(context, cObj);
         // ---- Check the Filter value(s)
         checkFilters(streamObj, context);
     }
@@ -96,8 +90,7 @@ public class StreamValidationProcess extends AbstractProcess
         COSBase bFilter = stream.getDictionaryObject(COSName.FILTER);
         if (bFilter != null)
         {
-            COSDocument cosDocument = context.getDocument().getDocument();
-            if (COSUtils.isArray(bFilter, cosDocument))
+            if (bFilter instanceof COSArray)
             {
                 COSArray afName = (COSArray) bFilter;
                 for (int i = 0; i < afName.size(); ++i)
@@ -118,201 +111,6 @@ public class StreamValidationProcess extends AbstractProcess
             }
         }
         // else Filter entry is optional
-    }
-
-    private boolean readUntilStream(InputStream ra) throws IOException
-    {
-        boolean search = true;
-        boolean maybe = false;
-        int lastChar = -1;
-        do
-        {
-            int c = ra.read();
-            switch (c)
-            {
-            case 's':
-                maybe = true;
-                lastChar = c;
-                break;
-            case 't':
-                if (maybe && lastChar == 's')
-                {
-                    lastChar = c;
-                }
-                else
-                {
-                    maybe = false;
-                    lastChar = -1;
-                }
-                break;
-            case 'r':
-                if (maybe && lastChar == 't')
-                {
-                    lastChar = c;
-                }
-                else
-                {
-                    maybe = false;
-                    lastChar = -1;
-                }
-                break;
-            case 'e':
-                if (maybe && lastChar == 'r')
-                {
-                    lastChar = c;
-                }
-                else
-                {
-                    maybe = false;
-                }
-                break;
-            case 'a':
-                if (maybe && lastChar == 'e')
-                {
-                    lastChar = c;
-                }
-                else
-                {
-                    maybe = false;
-                }
-                break;
-            case 'm':
-                if (maybe && lastChar == 'a')
-                {
-                    return true;
-                }
-                else
-                {
-                    maybe = false;
-                }
-                break;
-            case -1:
-                search = false;
-                break;
-            default:
-                maybe = false;
-                break;
-            }
-        } while (search);
-        return false;
-    }
-
-    protected void checkStreamLength(PreflightContext context, COSObject cObj) throws ValidationException
-    {
-        COSStream streamObj = (COSStream) cObj.getObject();
-        int length = streamObj.getInt(COSName.LENGTH);
-        InputStream ra = null;
-        try
-        {
-            ra = context.getSource().getInputStream();
-            Long offset = context.getDocument().getDocument().getXrefTable().get(new COSObjectKey(cObj));
-
-            // ---- go to the beginning of the object
-            long skipped = 0;
-            if (offset != null)
-            {
-                while (skipped != offset)
-                {
-                    long curSkip = ra.skip(offset - skipped);
-                    if (curSkip < 0)
-                    {
-                        addValidationError(context, new ValidationError(ERROR_SYNTAX_STREAM_DAMAGED, "Unable to skip bytes in the PDFFile to check stream length"));
-                        return;
-                    }
-                    skipped += curSkip;
-                }
-
-                // ---- go to the stream key word
-                if (readUntilStream(ra))
-                {
-                    int c = ra.read();
-                    if (c == '\r')
-                    {
-                        ra.read();
-                    }
-                    // else c is '\n' no more character to read
-
-                    // ---- Here is the true beginning of the Stream Content.
-                    // ---- Read the given length of bytes and check the 10 next bytes
-                    // ---- to see if there are endstream.
-                    byte[] buffer = new byte[1024];
-                    int nbBytesToRead = length;
-
-                    do
-                    {
-                        int cr;
-                        if (nbBytesToRead > buffer.length)
-                        {
-                            cr = ra.read(buffer);
-                        }
-                        else
-                        {
-                            cr = ra.read(buffer, 0, nbBytesToRead);
-                        }
-                        if (cr == -1)
-                        {
-                            addStreamLengthValidationError(context, cObj, length, "");
-                            return;
-                        }
-                        else
-                        {
-                            nbBytesToRead -= cr;
-                        }
-                    }
-                    while (nbBytesToRead > 0);
-
-                    int len = "endstream".length() + 2;
-                    byte[] buffer2 = new byte[len];
-                    for (int i = 0; i < len; ++i)
-                    {
-                        buffer2[i] = (byte) ra.read();
-                    }
-
-                    // ---- check the content of 10 last characters
-                    String endStream = new String(buffer2, Charsets.ISO_8859_1);
-                    if (buffer2[0] == '\r' && buffer2[1] == '\n')
-                    {
-                        if (!endStream.contains("endstream"))
-                        {
-                            addStreamLengthValidationError(context, cObj, length, endStream);
-                        }
-                    }
-                    else if (buffer2[0] == '\r' && buffer2[1] == 'e')
-                    {
-                        if (!endStream.contains("endstream"))
-                        {
-                            addStreamLengthValidationError(context, cObj, length, endStream);
-                        }
-                    }
-                    else if (buffer2[0] == '\n' && buffer2[1] == 'e')
-                    {
-                        if (!endStream.contains("endstream"))
-                        {
-                            addStreamLengthValidationError(context, cObj, length, endStream);
-                        }
-                    }
-                    else
-                    {
-                        if (!endStream.startsWith("endStream"))
-                        {
-                             addStreamLengthValidationError(context, cObj, length, endStream);
-                        }
-                    }
-                }
-                else
-                {
-                    addStreamLengthValidationError(context, cObj, length, "");
-                }
-            }
-        }
-        catch (IOException e)
-        {
-            throw new ValidationException("Unable to read a stream to validate: " + e.getMessage(), e);
-        }
-        finally
-        {
-            IOUtils.closeQuietly(ra);
-        }
     }
 
     /**
@@ -342,10 +140,4 @@ public class StreamValidationProcess extends AbstractProcess
         }
     }
     
-    private void addStreamLengthValidationError(PreflightContext context, COSObject cObj, int length, String endStream)
-    {
-        addValidationError(context, new ValidationError(ERROR_SYNTAX_STREAM_LENGTH_INVALID,
-                "Stream length is invalid [cObj=" + cObj + "; defined length=" + length + "; buffer2=" + endStream + "]"));
-    }
-
 }

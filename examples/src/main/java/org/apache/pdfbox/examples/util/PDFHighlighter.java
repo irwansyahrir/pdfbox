@@ -21,9 +21,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -45,7 +48,7 @@ public class PDFHighlighter extends PDFTextStripper
     private String[] searchedWords;
     private ByteArrayOutputStream textOS = null;
     private Writer textWriter = null;
-    private static final String ENCODING = "UTF-16";
+    private static final Charset ENCODING = StandardCharsets.UTF_16;
 
     /**
      * Default constructor.
@@ -54,7 +57,6 @@ public class PDFHighlighter extends PDFTextStripper
      */
     public PDFHighlighter() throws IOException
     {
-        super();
         super.setLineSeparator( "" );
         super.setWordSeparator( "" );
         super.setShouldSeparateByBeads( false );
@@ -146,7 +148,7 @@ public class PDFHighlighter extends PDFTextStripper
         }
         String[] highlightStrings = new String[args.length - 1];
         System.arraycopy(args, 1, highlightStrings, 0, highlightStrings.length);
-        try (PDDocument doc = PDDocument.load(new File(args[0])))
+        try (PDDocument doc = Loader.loadPDF(new File(args[0])))
         {
             xmlExtractor.generateXMLHighlight(
                 doc,

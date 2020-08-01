@@ -16,6 +16,7 @@
  */
 package org.apache.pdfbox.examples.pdmodel;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import java.io.File;
@@ -48,7 +49,7 @@ public final class RemoveFirstPage
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 if( document.isEncrypted() )
                 {

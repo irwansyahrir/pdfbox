@@ -19,9 +19,12 @@ package org.apache.pdfbox.examples.pdmodel;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -37,7 +40,8 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 
 
 /**
- * This is an example on how to add a rubber stamp with an image to pages of a PDF document.
+ * This is an example on how to add a rubber stamp annotation with an image to pages of a PDF
+ * document. To add a normal image, use the AddImageToPDF.java example.
  */
 public class RubberStampWithImage
 {
@@ -47,7 +51,7 @@ public class RubberStampWithImage
     private static final String XOBJECT_DO = "Do\n";
     private static final String SPACE = " ";
 
-    private static final NumberFormat formatDecimal = NumberFormat.getNumberInstance( Locale.US );
+    private static final NumberFormat FORMATDECIMAL = NumberFormat.getNumberInstance( Locale.US );
 
     /**
      * Add a rubber stamp with an jpg image to every page of the given document.
@@ -62,7 +66,7 @@ public class RubberStampWithImage
         }
         else 
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 if( document.isEncrypted() )
                 {
@@ -84,12 +88,12 @@ public class RubberStampWithImage
                     PDImageXObject ximage = PDImageXObject.createFromFile(args[2], document);           
 
                     // define and set the target rectangle
-                    int lowerLeftX = 250;
-                    int lowerLeftY = 550;
-                    int formWidth = 150;
-                    int formHeight = 25;
-                    int imgWidth = 50;
-                    int imgHeight = 25;
+                    float lowerLeftX = 250;
+                    float lowerLeftY = 550;
+                    float formWidth = 150;
+                    float formHeight = 25;
+                    float imgWidth = 50;
+                    float imgHeight = 25;
                     
                     PDRectangle rect = new PDRectangle();
                     rect.setLowerLeftX(lowerLeftX);
@@ -131,17 +135,17 @@ public class RubberStampWithImage
         COSName xObjectId = resources.add(xobject);
 
         appendRawCommands( os, SAVE_GRAPHICS_STATE );
-        appendRawCommands( os, formatDecimal.format( width ) );
+        appendRawCommands( os, FORMATDECIMAL.format( width ) );
         appendRawCommands( os, SPACE );
-        appendRawCommands( os, formatDecimal.format( 0 ) );
+        appendRawCommands( os, FORMATDECIMAL.format( 0 ) );
         appendRawCommands( os, SPACE );
-        appendRawCommands( os, formatDecimal.format( 0 ) );
+        appendRawCommands( os, FORMATDECIMAL.format( 0 ) );
         appendRawCommands( os, SPACE );
-        appendRawCommands( os, formatDecimal.format( height ) );
+        appendRawCommands( os, FORMATDECIMAL.format( height ) );
         appendRawCommands( os, SPACE );
-        appendRawCommands( os, formatDecimal.format( x ) );
+        appendRawCommands( os, FORMATDECIMAL.format( x ) );
         appendRawCommands( os, SPACE );
-        appendRawCommands( os, formatDecimal.format( y ) );
+        appendRawCommands( os, FORMATDECIMAL.format( y ) );
         appendRawCommands( os, SPACE );
         appendRawCommands( os, CONCATENATE_MATRIX );
         appendRawCommands( os, SPACE );
@@ -155,7 +159,7 @@ public class RubberStampWithImage
 
     private void appendRawCommands(OutputStream os, String commands) throws IOException
     {
-        os.write( commands.getBytes("ISO-8859-1"));
+        os.write( commands.getBytes(StandardCharsets.ISO_8859_1));
     }
 
     /**

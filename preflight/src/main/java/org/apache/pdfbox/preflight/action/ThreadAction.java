@@ -26,11 +26,11 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_ACTION_MISING
 
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.preflight.PreflightContext;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 
 /**
  * ActionManager for the Thread action ThreadAction is valid if the D entry is present.
@@ -52,12 +52,12 @@ public class ThreadAction extends AbstractActionManager
     /*
      * (non-Javadoc)
      * 
-     * @see net.awl.edoc.pdfa.validation.actions.AbstractActionManager#valid(java.util .List)
+     * @see org.apache.pdfbox.preflight.action.AbstractActionManager#valid(java.util .List)
      */
     @Override
     protected boolean innerValid()
     {
-        COSBase d = this.actionDictionnary.getItem(COSName.D);
+        COSBase d = this.actionDictionary.getDictionaryObject(COSName.D);
 
         // ---- D entry is mandatory
         if (d == null)
@@ -67,9 +67,8 @@ public class ThreadAction extends AbstractActionManager
             return false;
         }
 
-        COSDocument cosDocument = this.context.getDocument().getDocument();
-        if (!(COSUtils.isInteger(d, cosDocument) || COSUtils.isString(d, cosDocument) || COSUtils.isDictionary(d,
-                cosDocument)))
+        if (!(d instanceof COSInteger || d instanceof COSName || d instanceof COSString
+                || d instanceof COSDictionary))
         {
             context.addValidationError(new ValidationError(ERROR_ACTION_INVALID_TYPE, "D entry type is invalid"));
             return false;

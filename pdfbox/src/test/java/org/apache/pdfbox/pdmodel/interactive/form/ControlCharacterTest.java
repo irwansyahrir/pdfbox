@@ -22,10 +22,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSString;
-import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.junit.After;
 import org.junit.Before;
@@ -66,7 +68,7 @@ public class ControlCharacterTest {
     @Before
     public void setUp() throws IOException
     {
-        document = PDDocument.load(new File(IN_DIR, NAME_OF_PDF));
+        document = Loader.loadPDF(new File(IN_DIR, NAME_OF_PDF));
         acroForm = document.getDocumentCatalog().getAcroForm();
     }
     
@@ -178,21 +180,14 @@ public class ControlCharacterTest {
         PDFStreamParser parser = new PDFStreamParser(
                 widget.getNormalAppearanceStream().getContents());
     	
-    	Object token = parser.parseNextToken();
+        List<Object> tokens = parser.parse();
     	
-    	List<String> stringValues = new ArrayList<>();
-    	
-    	while (token != null)
-    	{
-    		if (token instanceof COSString)
-    		{
-    			// TODO: improve the string output to better match
-    			// trimming as Acrobat adds spaces to strings
-    			// where we don't
-    			stringValues.add(((COSString) token).getString().trim());
-    		}
-    		token = parser.parseNextToken();
-    	}
-    	return stringValues;   	
+        // TODO: improve the string output to better match
+        // trimming as Acrobat adds spaces to strings
+        // where we don't
+        return tokens.stream() //
+                .filter(t -> t instanceof COSString) //
+                .map(t -> ((COSString) t).getString().trim()) //
+                .collect(Collectors.toList());
     }
 }

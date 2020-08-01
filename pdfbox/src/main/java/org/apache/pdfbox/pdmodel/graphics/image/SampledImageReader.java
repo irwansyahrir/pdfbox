@@ -35,6 +35,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.filter.DecodeOptions;
+import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
 import org.apache.pdfbox.pdmodel.graphics.color.PDIndexed;
@@ -97,7 +98,7 @@ final class SampledImageReader
             for (int y = 0; y < height; y++)
             {
                 int x = 0;
-                int readLen = iis.read(buff);
+                int readLen = (int) IOUtils.populateBuffer(iis, buff);
                 for (int r = 0; r < rowLen && r < readLen; r++)
                 {
                     int byteValue = buff[r];
@@ -168,7 +169,7 @@ final class SampledImageReader
      * @param region The region of the source image to get, or null if the entire image is needed.
      *               The actual region will be clipped to the dimensions of the source image.
      * @param subsampling The amount of rows and columns to advance for every output pixel, a value
-     *                  of 1 meaning every pixel will be read
+     * of 1 meaning every pixel will be read. It must not be larger than the image width or height.
      * @param colorKey an optional color key mask
      * @return content of this image as an (A)RGB buffered image
      * @throws IOException if the image cannot be read
@@ -195,26 +196,32 @@ final class SampledImageReader
             throw new IOException("image width and height must be positive");
         }
 
-        if (bitsPerComponent == 1 && colorKey == null && numComponents == 1)
+        try
         {
-            return from1Bit(pdImage, clipped, subsampling, width, height);
-        }
+            if (bitsPerComponent == 1 && colorKey == null && numComponents == 1)
+            {
+                return from1Bit(pdImage, clipped, subsampling, width, height);
+            }
 
-        //
-        // An AWT raster must use 8/16/32 bits per component. Images with < 8bpc
-        // will be unpacked into a byte-backed raster. Images with 16bpc will be reduced
-        // in depth to 8bpc as they will be drawn to TYPE_INT_RGB images anyway. All code
-        // in PDColorSpace#toRGBImage expects an 8-bit range, i.e. 0-255.
-        // Interleaved raster allows chunk-copying for 8-bit images.
-        WritableRaster raster = Raster.createInterleavedRaster(DataBuffer.TYPE_BYTE, width, height,
-                numComponents, new Point(0, 0));
-        final float[] defaultDecode = pdImage.getColorSpace().getDefaultDecode(8);
-        if (bitsPerComponent == 8 && Arrays.equals(decode, defaultDecode) && colorKey == null)
-        {
-            // convert image, faster path for non-decoded, non-colormasked 8-bit images
-            return from8bit(pdImage, raster, clipped, subsampling, width, height);
+            // An AWT raster must use 8/16/32 bits per component. Images with < 8bpc
+            // will be unpacked into a byte-backed raster. Images with 16bpc will be reduced
+            // in depth to 8bpc as they will be drawn to TYPE_INT_RGB images anyway. All code
+            // in PDColorSpace#toRGBImage expects an 8-bit range, i.e. 0-255.
+            // Interleaved raster allows chunk-copying for 8-bit images.
+            WritableRaster raster = Raster.createInterleavedRaster(DataBuffer.TYPE_BYTE, width, height,
+                    numComponents, new Point(0, 0));
+            final float[] defaultDecode = pdImage.getColorSpace().getDefaultDecode(8);
+            if (bitsPerComponent == 8 && Arrays.equals(decode, defaultDecode) && colorKey == null)
+            {
+                // convert image, faster path for non-decoded, non-colormasked 8-bit images
+                return from8bit(pdImage, raster, clipped, subsampling, width, height);
+            }
+            return fromAny(pdImage, raster, colorKey, clipped, subsampling, width, height);
         }
-        return fromAny(pdImage, raster, colorKey, clipped, subsampling, width, height);
+        catch (NegativeArraySizeException ex)
+        {
+            throw new IOException(ex);
+        }
     }
 
     private static BufferedImage from1Bit(PDImage pdImage, Rectangle clipped, final int subsampling,
@@ -295,7 +302,7 @@ final class SampledImageReader
             for (int y = 0; y < starty + scanHeight; y++)
             {
                 int x = 0;
-                int readLen = iis.read(buff);
+                int readLen = (int) IOUtils.populateBuffer(iis, buff);
                 if (y < starty || y % currentSubsampling > 0)
                 {
                     continue;
@@ -375,7 +382,7 @@ final class SampledImageReader
             if (startx == 0 && starty == 0 && scanWidth == width && scanHeight == height && currentSubsampling == 1)
             {
                 // we just need to copy all sample data, then convert to RGB image.
-                long inputResult = input.read(bank);
+                long inputResult = IOUtils.populateBuffer(input, bank);
                 if (Long.compare(inputResult, width * height * (long) numComponents) != 0)
                 {
                     LOG.debug("Tried reading " + width * height * (long) numComponents + " bytes but only " + inputResult + " bytes read");
@@ -392,7 +399,7 @@ final class SampledImageReader
             int i = 0;
             for (int y = 0; y < starty + scanHeight; ++y)
             {
-                long inputResult = input.read(tempBytes);
+                long inputResult = IOUtils.populateBuffer(input, tempBytes);
 
                 if (Long.compare(inputResult, tempBytes.length) != 0)
                 {
@@ -563,7 +570,6 @@ final class SampledImageReader
 
     // color key mask: RGB + Binary -> ARGB
     private static BufferedImage applyColorKeyMask(BufferedImage image, BufferedImage mask)
-            throws IOException
     {
         int width = image.getWidth();
         int height = image.getHeight();

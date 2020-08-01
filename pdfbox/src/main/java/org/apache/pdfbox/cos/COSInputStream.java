@@ -23,7 +23,9 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.pdfbox.filter.DecodeOptions;
 import org.apache.pdfbox.filter.DecodeResult;
@@ -61,12 +63,13 @@ public final class COSInputStream extends FilterInputStream
     {
         List<DecodeResult> results = new ArrayList<>();
         InputStream input = in;
-        if (filters.isEmpty())
+        if (!filters.isEmpty())
         {
-            input = in;
-        }
-        else
-        {
+            Set<Filter> filterSet = new HashSet<>(filters);
+            if (filterSet.size() != filters.size())
+            {
+                throw new IOException("Duplicate");
+            }
             // apply filters
             for (int i = 0; i < filters.size(); i++)
             {

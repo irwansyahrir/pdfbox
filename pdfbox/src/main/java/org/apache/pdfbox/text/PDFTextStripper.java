@@ -16,6 +16,7 @@
  */
 package org.apache.pdfbox.text;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -186,6 +187,11 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * This will return the text of a document. See writeText. <br>
      * NOTE: The document must not be encrypted when coming into this method.
      *
+     * <p>IMPORTANT: By default, text extraction is done in the same sequence as the text in the PDF page content stream.
+     * PDF is a graphic format, not a text format, and unlike HTML, it has no requirements that text one on page
+     * be rendered in a certain order. The order is the one that was determined by the software that created the
+     * PDF. To get text sorted from left to right and top to botton, use {@link #setSortByPosition(boolean)}.
+     * 
      * @param doc The document to get the text from.
      * @return The text of the PDF document.
      * @throws IOException if the doc state is invalid or it is encrypted.
@@ -352,7 +358,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                     }
                     else
                     {
-                        charactersByArticle.add(new ArrayList<TextPosition>());
+                        charactersByArticle.add(new ArrayList<>());
                     }
                 }
             }
@@ -600,14 +606,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 float expectedStartOfNextWordX = EXPECTED_START_OF_NEXT_WORD_X_RESET_VALUE;
                 if (Float.compare(endOfLastTextX, END_OF_LAST_TEXT_X_RESET_VALUE) != 0)
                 {
-                    if (deltaCharWidth > deltaSpace)
-                    {
-                        expectedStartOfNextWordX = endOfLastTextX + deltaSpace;
-                    }
-                    else
-                    {
-                        expectedStartOfNextWordX = endOfLastTextX + deltaCharWidth;
-                    }
+                    expectedStartOfNextWordX = endOfLastTextX + Math.min(deltaSpace, deltaCharWidth);
                 }
 
                 if (lastPosition != null)
@@ -640,10 +639,12 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                     }
                     // test if our TextPosition starts after a new word would be expected to start
                     if (Float.compare(expectedStartOfNextWordX, EXPECTED_START_OF_NEXT_WORD_X_RESET_VALUE) != 0
-                            && expectedStartOfNextWordX < positionX &&
-                            // only bother adding a space if the last character was not a space
-                            lastPosition.getTextPosition().getUnicode() != null
-                            && !lastPosition.getTextPosition().getUnicode().endsWith(" "))
+                            && expectedStartOfNextWordX < positionX
+                            // only bother adding a word separator if the last character was not a word separator
+                            && (wordSeparator.isEmpty() || //
+                                    (lastPosition.getTextPosition().getUnicode() != null
+                                            && !lastPosition.getTextPosition().getUnicode()
+                                                    .endsWith(wordSeparator))))
                     {
                         line.add(LineItem.getWordSeparator());
                     }
@@ -893,7 +894,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
             // In the wild, some PDF encoded documents put diacritics (accents on
             // top of characters) into a separate Tj element. When displaying them
-            // graphically, the two chunks get overlayed. With text output though,
+            // graphically, the two chunks get overlaid. With text output though,
             // we need to do the overlay. This code recombines the diacritic with
             // its associated character if the two are consecutive.
             if (textList.isEmpty())
@@ -1808,18 +1809,11 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
     static
     {
-        String path = "org/apache/pdfbox/resources/text/BidiMirroring.txt";
-        try (InputStream input = PDFTextStripper.class.getClassLoader().getResourceAsStream(path))
+        String path = "/org/apache/pdfbox/resources/text/BidiMirroring.txt";
+        try (InputStream resourceAsStream = PDFTextStripper.class.getResourceAsStream(path);
+             InputStream input = new BufferedInputStream(resourceAsStream))
         {
-            if (input != null)
-            {
-                parseBidiFile(input);
-            }
-            else
-            {
-                LOG.warn("Could not find '" + path + "', mirroring char map will be empty: ");
-            }
-            
+            parseBidiFile(input);
         }
         catch (IOException e)
         {

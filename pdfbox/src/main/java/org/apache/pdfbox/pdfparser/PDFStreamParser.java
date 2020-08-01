@@ -16,7 +16,6 @@
  */
 package org.apache.pdfbox.pdfparser;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +24,7 @@ import java.util.List;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -32,6 +32,8 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNull;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.io.InputStreamRandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
 /**
  * This will parse a PDF byte stream and extract operands and such.
@@ -45,8 +47,6 @@ public class PDFStreamParser extends BaseParser
      */
     private static final Log LOG = LogFactory.getLog(PDFStreamParser.class);
 
-    private final List<Object> streamObjects = new ArrayList<>( 100 );
-    
     private static final int MAX_BIN_CHAR_TEST_LENGTH = 10;
     private final byte[] binCharTestArr = new byte[MAX_BIN_CHAR_TEST_LENGTH];
     
@@ -58,7 +58,7 @@ public class PDFStreamParser extends BaseParser
      */
     public PDFStreamParser(InputStream stream) throws IOException
     {
-        super(new InputStreamSource(stream));
+        super(new InputStreamRandomAccessRead(stream));
     }
     
     /**
@@ -69,31 +69,24 @@ public class PDFStreamParser extends BaseParser
      */
     public PDFStreamParser(byte[] bytes) throws IOException
     {
-        super(new InputStreamSource(new ByteArrayInputStream(bytes)));
+        super(new RandomAccessReadBuffer(bytes));
     }
 
     /**
-     * This will parse all the tokens in the stream. This will close the stream when it is finished
-     * parsing. You can then access these with {@link #getTokens() getTokens()}.
+     * This will parse all the tokens in the stream. This will close the stream when it is finished parsing.
      *
+     * @return All of the tokens in the stream.
      * @throws IOException If there is an error while parsing the stream.
      */
-    public void parse() throws IOException
+    public List<Object> parse() throws IOException
     {
+        List<Object> streamObjects = new ArrayList<>(100);
         Object token;
         while( (token = parseNextToken()) != null )
         {
             streamObjects.add( token );
         }
-    }
-
-    /**
-     * This will get the tokens that were parsed from the stream by the {@link #parse() parse()} method.
-     *
-     * @return All of the tokens in the stream.
-     */
-    public List<Object> getTokens()
-    {
+        source.close();
         return streamObjects;
     }
 
@@ -109,9 +102,10 @@ public class PDFStreamParser extends BaseParser
         Object retval;
 
         skipSpaces();
-        int nextByte = seqSource.peek();
+        int nextByte = source.peek();
         if( ((byte)nextByte) == -1 )
         {
+            source.close();
             return null;
         }
         char c = (char)nextByte;
@@ -120,13 +114,13 @@ public class PDFStreamParser extends BaseParser
             case '<':
             {
                 // pull off first left bracket
-                int leftBracket = seqSource.read();
+                int leftBracket = source.read();
 
                 // check for second left bracket
-                c = (char) seqSource.peek();
+                c = (char) source.peek();
 
                 // put back first bracket
-                seqSource.unread(leftBracket);
+                source.unread(leftBracket);
 
                 if (c == '<')
                 {
@@ -190,7 +184,7 @@ public class PDFStreamParser extends BaseParser
                 String line = readString();
                 if( line.equals( "R" ) )
                 {
-                    retval = new COSObject( null );
+                retval = new COSObject(null);
                 }
                 else
                 {
@@ -216,23 +210,24 @@ public class PDFStreamParser extends BaseParser
                  * allow 1 "." and "-" and "+" at start of number. */
                 StringBuilder buf = new StringBuilder();
                 buf.append( c );
-                seqSource.read();
+                source.read();
                 
                 // Ignore double negative (this is consistent with Adobe Reader)
-                if (c == '-' && seqSource.peek() == c)
+                if (c == '-' && source.peek() == c)
                 {
-                    seqSource.read();
+                    source.read();
                 }
 
                 boolean dotNotRead = c != '.';
-                while( Character.isDigit(c = (char) seqSource.peek()) || dotNotRead && c == '.' || c == '-')
+                while (Character.isDigit(c = (char) source.peek()) || dotNotRead && c == '.'
+                        || c == '-')
                 {
                     if (c != '-')
                     {
                         // PDFBOX-4064: ignore "-" in the middle of a number
                         buf.append(c);
                     }
-                    seqSource.read();
+                    source.read();
 
                     if (dotNotRead && c == '.')
                     {
@@ -246,7 +241,7 @@ public class PDFStreamParser extends BaseParser
             {
                 String next = readString();
                 retval = Operator.getOperator(next);
-                if( next.equals( "BI" ) )
+                if( next.equals( OperatorName.BEGIN_INLINE_IMAGE ) )
                 {
                     Operator beginImageOP = (Operator)retval;
                     COSDictionary imageParams = new COSDictionary();
@@ -263,7 +258,7 @@ public class PDFStreamParser extends BaseParser
                         Operator imageData = (Operator) nextToken;
                         if (imageData.getImageData() == null || imageData.getImageData().length == 0)
                         {
-                            LOG.warn("empty inline image at stream offset " + seqSource.getPosition());
+                            LOG.warn("empty inline image at stream offset " + source.getPosition());
                         }
                         beginImageOP.setImageData(imageData.getImageData());
                     }
@@ -273,20 +268,20 @@ public class PDFStreamParser extends BaseParser
             case 'I':
             {
                 //Special case for ID operator
-                String id = "" + (char) seqSource.read() + (char) seqSource.read();
-                if( !id.equals( "ID" ) )
+                String id = Character.toString((char) source.read()) + (char) source.read();
+                if (!id.equals(OperatorName.BEGIN_INLINE_IMAGE_DATA))
                 {
                     throw new IOException( "Error: Expected operator 'ID' actual='" + id +
-                                           "' at stream offset " + seqSource.getPosition());
+                            "' at stream offset " + source.getPosition());
                 }
                 ByteArrayOutputStream imageData = new ByteArrayOutputStream();
                 if( isWhitespace() )
                 {
                     //pull off the whitespace character
-                    seqSource.read();
+                    source.read();
                 }
-                int lastByte = seqSource.read();
-                int currentByte = seqSource.read();
+                int lastByte = source.read();
+                int currentByte = source.read();
                 // PDF spec is kinda unclear about this. Should a whitespace
                 // always appear before EI? Not sure, so that we just read
                 // until EI<whitespace>.
@@ -294,15 +289,15 @@ public class PDFStreamParser extends BaseParser
                 while( !(lastByte == 'E' &&
                          currentByte == 'I' &&
                          hasNextSpaceOrReturn() &&
-                         hasNoFollowingBinData(seqSource)) &&
-                       !seqSource.isEOF() )
+                    hasNoFollowingBinData()) &&
+                    !isEOF())
                 {
                     imageData.write( lastByte );
                     lastByte = currentByte;
-                    currentByte = seqSource.read();
+                    currentByte = source.read();
                 }
                 // the EI operator isn't unread, as it won't be processed anyway
-                retval = Operator.getOperator("ID");
+                retval = Operator.getOperator(OperatorName.BEGIN_INLINE_IMAGE_DATA);
                 // save the image data to the operator, so that it can be accessed later
                 ((Operator)retval).setImageData( imageData.toByteArray() );
                 break;
@@ -311,7 +306,7 @@ public class PDFStreamParser extends BaseParser
             {
                 // some ']' around without its previous '['
                 // this means a PDF is somewhat corrupt but we will continue to parse.
-                seqSource.read();
+                source.read();
                 
                 // must be a better solution than null...
                 retval = COSNull.NULL;  
@@ -343,10 +338,10 @@ public class PDFStreamParser extends BaseParser
      * @return <code>true</code> if next bytes are probably printable ASCII
      * characters starting with a PDF operator, otherwise <code>false</code>
      */
-    private boolean hasNoFollowingBinData(SequentialSource pdfSource) throws IOException
+    private boolean hasNoFollowingBinData() throws IOException
     {
         // as suggested in PDFBOX-1164
-        final int readBytes = pdfSource.read(binCharTestArr, 0, MAX_BIN_CHAR_TEST_LENGTH);
+        final int readBytes = source.read(binCharTestArr, 0, MAX_BIN_CHAR_TEST_LENGTH);
         boolean noBinData = true;
         int startOpIdx = -1;
         int endOpIdx = -1;
@@ -398,12 +393,12 @@ public class PDFStreamParser extends BaseParser
                     noBinData = false;
                 }
             }
-            pdfSource.unread(binCharTestArr, 0, readBytes);
+            source.unread(binCharTestArr, 0, readBytes);
         }
         if (!noBinData)
         {
             LOG.warn("ignoring 'EI' assumed to be in the middle of inline image at stream offset " + 
-                    pdfSource.getPosition());
+                    source.getPosition());
         }
         return noBinData;
     }
@@ -415,14 +410,14 @@ public class PDFStreamParser extends BaseParser
      *
      * @throws IOException If there is an error reading from the stream.
      */
-    protected String readOperator() throws IOException
+    private String readOperator() throws IOException
     {
         skipSpaces();
 
         //average string size is around 2 and the normal string buffer size is
         //about 16 so lets save some space.
         StringBuilder buffer = new StringBuilder(4);
-        int nextChar = seqSource.peek();
+        int nextChar = source.peek();
         while(
             nextChar != -1 && // EOF
             !isWhitespace(nextChar) &&
@@ -434,14 +429,14 @@ public class PDFStreamParser extends BaseParser
             (nextChar < '0' ||
              nextChar > '9' ) )
         {
-            char currentChar = (char) seqSource.read();
-            nextChar = seqSource.peek();
+            char currentChar = (char) source.read();
+            nextChar = source.peek();
             buffer.append( currentChar );
             // Type3 Glyph description has operators with a number in the name
             if (currentChar == 'd' && (nextChar == '0' || nextChar == '1') ) 
             {
-                buffer.append( (char) seqSource.read() );
-                nextChar = seqSource.peek();
+                buffer.append((char) source.read());
+                nextChar = source.peek();
             }
         }
         return buffer.toString();
@@ -461,6 +456,6 @@ public class PDFStreamParser extends BaseParser
      */
     private boolean hasNextSpaceOrReturn() throws IOException
     {
-        return isSpaceOrReturn( seqSource.peek() );
+        return isSpaceOrReturn(source.peek());
     }
 }

@@ -21,12 +21,9 @@ import org.apache.pdfbox.debugger.PDFDebugger;
 /**
  * Simple wrapper around all the command line utilities included in PDFBox.
  * Used as the main class in the runnable standalone PDFBox jar.
- *
- * @see <a href="https://issues.apache.org/jira/browse/PDFBOX-687">PDFBOX-687</a>
  */
 public final class PDFBox 
 {
-
     private PDFBox()
     {
     }
@@ -35,6 +32,7 @@ public final class PDFBox
      * Main method.
      * 
      * @param args command line arguments
+     * @throws java.lang.Exception
      */
     public static void main(String[] args) throws Exception
     {
@@ -81,6 +79,9 @@ public final class PDFBox
                 case "PDFToImage":
                     PDFToImage.main(arguments);
                     break;
+                case "ImageToPDF":
+                    ImageToPDF.main(arguments);
+                    break;
                 case "TextToPDF":
                     TextToPDF.main(arguments);
                     break;
@@ -111,6 +112,7 @@ public final class PDFBox
                 + "  Encrypt\n"
                 + "  ExtractText\n"
                 + "  ExtractImages\n"
+                + "  ImageToPDF\n"
                 + "  OverlayPDF\n"
                 + "  PrintPDF\n"
                 + "  PDFDebugger\n"

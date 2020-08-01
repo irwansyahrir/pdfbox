@@ -18,9 +18,11 @@ package org.apache.pdfbox.pdfwriter;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSBoolean;
@@ -28,8 +30,8 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSNull;
 import org.apache.pdfbox.cos.COSString;
-import org.apache.pdfbox.util.Charsets;
 
 /**
  * A class that will take a list of tokens and write out a stream with them.
@@ -93,7 +95,7 @@ public class ContentStreamWriter
         {
             writeObject(token);
         }
-        output.write("\n".getBytes(Charsets.US_ASCII));
+        output.write("\n".getBytes(StandardCharsets.US_ASCII));
     }
 
     /**
@@ -143,11 +145,10 @@ public class ContentStreamWriter
             output.write(COSWriter.ARRAY_OPEN);
             for( int i=0; i<array.size(); i++ )
             {
-                writeObject( array.get( i ) );
-                output.write( SPACE );
+                writeObject(array.get(i));
             }
-
-            output.write( COSWriter.ARRAY_CLOSE );
+            output.write(COSWriter.ARRAY_CLOSE);
+            output.write(SPACE);
         }
         else if( o instanceof COSDictionary )
         {
@@ -157,10 +158,8 @@ public class ContentStreamWriter
             {
                 if (entry.getValue() != null)
                 {
-                    writeObject( entry.getKey() );
-                    output.write( SPACE );
-                    writeObject( entry.getValue() );
-                    output.write( SPACE );
+                    writeObject(entry.getKey());
+                    writeObject(entry.getValue());
                 }
             }
             output.write( COSWriter.DICT_CLOSE );
@@ -169,9 +168,10 @@ public class ContentStreamWriter
         else if( o instanceof Operator)
         {
             Operator op = (Operator)o;
-            if( op.getName().equals( "BI" ) )
+            if( op.getName().equals( OperatorName.BEGIN_INLINE_IMAGE ) )
             {
-                output.write( "BI".getBytes(Charsets.ISO_8859_1) );
+                output.write( OperatorName.BEGIN_INLINE_IMAGE.getBytes(StandardCharsets.ISO_8859_1) );
+                output.write(EOL);
                 COSDictionary dic = op.getImageParameters();
                 for( COSName key : dic.keySet() )
                 {
@@ -181,18 +181,23 @@ public class ContentStreamWriter
                     writeObject( value );
                     output.write( EOL );
                 }
-                output.write( "ID".getBytes(Charsets.ISO_8859_1) );
+                output.write( OperatorName.BEGIN_INLINE_IMAGE_DATA.getBytes(StandardCharsets.ISO_8859_1) );
                 output.write( EOL );
                 output.write( op.getImageData() );
                 output.write( EOL );
-                output.write( "EI".getBytes(Charsets.ISO_8859_1) );
+                output.write( OperatorName.END_INLINE_IMAGE.getBytes(StandardCharsets.ISO_8859_1) );
                 output.write( EOL );
             }
             else
             {
-                output.write( op.getName().getBytes(Charsets.ISO_8859_1) );
+                output.write( op.getName().getBytes(StandardCharsets.ISO_8859_1) );
                 output.write( EOL );
             }
+        }
+        else if (o instanceof COSNull)
+        {
+            output.write("null".getBytes(StandardCharsets.US_ASCII));
+            output.write(SPACE);
         }
         else
         {

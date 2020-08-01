@@ -22,14 +22,13 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
 import javax.imageio.ImageIO;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.tools.imageio.ImageIOUtil;
@@ -41,9 +40,7 @@ import org.apache.pdfbox.tools.imageio.ImageIOUtil;
  */
 public final class PDFToImage
 {
-
-    private static final Log LOG = LogFactory.getLog(PDFToImage.class);
-
+    @SuppressWarnings({"squid:S2068"})
     private static final String PASSWORD = "-password";
     private static final String START_PAGE = "-startPage";
     private static final String END_PAGE = "-endPage";
@@ -77,20 +74,10 @@ public final class PDFToImage
      */
     public static void main( String[] args ) throws IOException
     {
-        try
-        {
-            // force KCMS (faster than LCMS) if available
-            Class.forName("sun.java2d.cmm.kcms.KcmsServiceProvider");
-            System.setProperty("sun.java2d.cmm", "sun.java2d.cmm.kcms.KcmsServiceProvider");
-        }
-        catch (ClassNotFoundException e)
-        {
-            LOG.debug("KCMS service not found - using LCMS", e);
-        }
-
         // suppress the Dock icon on OS X
         System.setProperty("apple.awt.UIElement", "true");
 
+        @SuppressWarnings({"squid:S2068"})
         String password = "";
         String pdfFile = null;
         String outputPrefix = null;
@@ -99,7 +86,7 @@ public final class PDFToImage
         int endPage = Integer.MAX_VALUE;
         String color = "rgb";
         int dpi;
-        float quality = 1.0f;
+        float quality = -1;
         float cropBoxLowerLeftX = 0;
         float cropBoxLowerLeftY = 0;
         float cropBoxUpperRightX = 0;
@@ -208,9 +195,18 @@ public final class PDFToImage
             {
                 outputPrefix = pdfFile.substring( 0, pdfFile.lastIndexOf( '.' ));
             }
-
-            try (PDDocument document = PDDocument.load(new File(pdfFile), password))
+            if (quality < 0)
             {
+                quality = "png".equals(imageFormat) ? 0f : 1f;
+            }
+
+            try (PDDocument document = Loader.loadPDF(new File(pdfFile), password))
+            {
+                PDAcroForm acroForm = document.getDocumentCatalog().getAcroForm();
+                if (acroForm != null && acroForm.getNeedAppearances())
+                {
+                    acroForm.refreshAppearances();
+                }
                 ImageType imageType = null;
                 if ("bilevel".equalsIgnoreCase(color))
                 {
@@ -267,7 +263,7 @@ public final class PDFToImage
                 int count = 1 + endPage - startPage;
                 if (showTime)
                 {
-                    System.err.printf("Rendered %d page%s in %dms\n", count, count == 1 ? "" : "s",
+                    System.err.printf("Rendered %d page%s in %dms%n", count, count == 1 ? "" : "s",
                                       duration / 1000000);
                 }
 
@@ -289,14 +285,15 @@ public final class PDFToImage
         String message = "Usage: java -jar pdfbox-app-x.y.z.jar PDFToImage [options] <inputfile>\n"
             + "\nOptions:\n"
             + "  -password  <password>            : Password to decrypt document\n"
-            + "  -format <string>                 : Image format: " + getImageFormats() + "\n"
+            + "  -format <string>                 : Available image formats: " + getImageFormats() + "\n"
             + "  -prefix <string>                 : Filename prefix for image files\n"
-            + "  -page <number>                   : The only page to extract (1-based)\n"
+            + "  -page <int>                      : The only page to extract (1-based)\n"
             + "  -startPage <int>                 : The first page to start extraction (1-based)\n"
-            + "  -endPage <int>                   : The last page to extract(inclusive)\n"
-            + "  -color <int>                     : The color depth (valid: bilevel, gray, rgb (default), rgba)\n"
+            + "  -endPage <int>                   : The last page to extract (inclusive)\n"
+            + "  -color <string>                  : The color depth (valid: bilevel, gray, rgb (default), rgba)\n"
             + "  -dpi <int>                       : The DPI of the output image, default: screen resolution or 96 if unknown\n"
-            + "  -quality <float>                 : The quality to be used when compressing the image (0 < quality <= 1 (default))\n"
+            + "  -quality <float>                 : The quality to be used when compressing the image (0 <= quality <= 1)\n"
+            + "                                     (default: 0 for PNG and 1 for the other formats)\n"
             + "  -cropbox <int> <int> <int> <int> : The page area to export\n"
             + "  -time                            : Prints timing information to stdout\n"
             + "  -subsampling                     : Activate subsampling (for PDFs with huge images)\n"
@@ -309,7 +306,7 @@ public final class PDFToImage
     private static String getImageFormats()
     {
         StringBuilder retval = new StringBuilder();
-        String[] formats = ImageIO.getReaderFormatNames();
+        String[] formats = ImageIO.getWriterFormatNames();
         for( int i = 0; i < formats.length; i++ )
         {
            if (formats[i].equalsIgnoreCase(formats[i]))

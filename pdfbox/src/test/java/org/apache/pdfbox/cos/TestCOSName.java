@@ -18,6 +18,8 @@ package org.apache.pdfbox.cos;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.Assert;
@@ -44,7 +46,7 @@ public class TestCOSName
             
             document.save(baos);
         }
-        try (PDDocument document = PDDocument.load(baos.toByteArray()))
+        try (PDDocument document = Loader.loadPDF(baos.toByteArray()))
         {
             COSDictionary catalogDict = document.getDocumentCatalog().getCOSObject();
             Assert.assertTrue(catalogDict.containsKey(special));

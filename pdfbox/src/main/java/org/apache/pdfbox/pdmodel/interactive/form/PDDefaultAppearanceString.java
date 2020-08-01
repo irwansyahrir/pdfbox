@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
@@ -127,12 +128,12 @@ class PDDefaultAppearanceString
     {
         switch (operator.getName())
         {
-            case "Tf":
+            case OperatorName.SET_FONT_AND_SIZE:
                 processSetFont(operands);
                 break;
-            case "g":
-            case "rg":
-            case "k":
+            case OperatorName.NON_STROKING_GRAY:
+            case OperatorName.NON_STROKING_RGB:
+            case OperatorName.NON_STROKING_CMYK:
                 processSetFontColor(operands);
                 break;
             default:
@@ -232,7 +233,7 @@ class PDDefaultAppearanceString
     /**
      * Returns the font.
      */
-    PDFont getFont() throws IOException
+    PDFont getFont()
     {
         return font;
     }
@@ -284,7 +285,11 @@ class PDDefaultAppearanceString
     }
 
     /**
-     * Writes the DA string to the given content stream.
+     * Write font name, font size and color from the /DA string to the given content stream.
+     *
+     * @param contents The content stream.
+     * @param zeroFontSize The calculated font size to use if the /DA string has a size 0
+     * (autosize). Otherwise the size from the /DA string is used.
      */
     void writeTo(PDAppearanceContentStream contents, float zeroFontSize) throws IOException
     {
@@ -315,7 +320,7 @@ class PDDefaultAppearanceString
             appearanceStream.setResources(streamResources);
         }
         
-        if (streamResources.getFont(getFontName()) == null)
+        if (streamResources.getFont(fontName) == null)
         {
             streamResources.put(fontName, getFont());
         }

@@ -16,12 +16,13 @@
  */
 package org.apache.pdfbox.contentstream.operator.graphics;
 
-import java.awt.geom.GeneralPath;
+import java.awt.geom.Path2D;
 import java.io.IOException;
 import java.util.List;
 
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 
 /**
  * f Fill path using non zero winding rule.
@@ -33,12 +34,12 @@ public class FillNonZeroRule extends GraphicsOperatorProcessor
     @Override
     public final void process(Operator operator, List<COSBase> operands) throws IOException
     {
-        context.fillPath(GeneralPath.WIND_NON_ZERO);
+        context.fillPath(Path2D.WIND_NON_ZERO);
     }
 
     @Override
     public String getName()
     {
-        return "f";
+        return OperatorName.FILL_NON_ZERO;
     }
 }

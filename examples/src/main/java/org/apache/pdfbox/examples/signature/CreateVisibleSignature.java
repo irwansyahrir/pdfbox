@@ -29,6 +29,7 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.util.Calendar;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -190,7 +191,7 @@ public class CreateVisibleSignature extends CreateSignatureBase
         // creating output document and prepare the IO streams.
         
         try (FileOutputStream fos = new FileOutputStream(signedFile);
-                PDDocument doc = PDDocument.load(inputFile))
+                PDDocument doc = Loader.loadPDF(inputFile))
         {
             int accessPermissions = SigUtils.getMDPPermission(doc);
             if (accessPermissions == 1)
@@ -278,7 +279,6 @@ public class CreateVisibleSignature extends CreateSignatureBase
 
             if (isExternalSigning())
             {
-                System.out.println("Signing externally " + signedFile.getName());
                 ExternalSigningSupport externalSigning = doc.saveIncrementalForExternalSigning(fos);
                 // invoke external signature service
                 byte[] cmsSignature = sign(externalSigning.getContent());

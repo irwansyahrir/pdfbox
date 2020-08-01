@@ -25,8 +25,8 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLine;
 import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import static org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLine.LE_NONE;
-import static org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDAbstractAppearanceHandler.ANGLED_STYLES;
 import org.apache.pdfbox.util.Matrix;
 
 /**
@@ -41,6 +41,11 @@ public class PDLineAppearanceHandler extends PDAbstractAppearanceHandler
     public PDLineAppearanceHandler(PDAnnotation annotation)
     {
         super(annotation);
+    }
+
+    public PDLineAppearanceHandler(PDAnnotation annotation, PDDocument document)
+    {
+        super(annotation, document);
     }
 
     @Override
@@ -99,7 +104,7 @@ public class PDLineAppearanceHandler extends PDAbstractAppearanceHandler
         // However the border of the line ending shapes is not drawn.
         float lineEndingSize = (ab.width < 1e-5) ? 1 : ab.width;
 
-        // add/substract with, font height, and arrows
+        // add/subtract with, font height, and arrows
         // arrow length is 9 * width at about 30° => 10 * width seems to be enough
         // but need to consider /LL, /LLE and /LLO too
         //TODO find better way to calculate padding
@@ -148,6 +153,13 @@ public class PDLineAppearanceHandler extends PDAbstractAppearanceHandler
             double angle = Math.atan2(y2 - y1, x2 - x1);
             cs.transform(Matrix.getRotateInstance(angle, x1, y1));
             float lineLength = (float) Math.sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)));
+
+            // Leader lines
+            cs.moveTo(0, llo);
+            cs.lineTo(0, llo + ll + lle);
+            cs.moveTo(lineLength, llo);
+            cs.lineTo(lineLength, llo + ll + lle);
+
             if (annotation.hasCaption() && !contents.isEmpty())
             {
                 // Note that Adobe places the text as a caption even if /CP is not set
@@ -173,12 +185,6 @@ public class PDLineAppearanceHandler extends PDAbstractAppearanceHandler
                 }
                 float xOffset = (lineLength - contentLength) / 2;
                 float yOffset;
-
-                // Leader lines
-                cs.moveTo(0, llo);
-                cs.lineTo(0, llo + ll + lle);
-                cs.moveTo(lineLength, llo);
-                cs.lineTo(lineLength, llo + ll + lle);
 
                 String captionPositioning = annotation.getCaptionPositioning();
 

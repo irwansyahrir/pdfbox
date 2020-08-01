@@ -30,13 +30,15 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.URISyntaxException;
 
-import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.MemoryUsageSetting;
-import org.apache.pdfbox.io.RandomAccessBufferedFileInputStream;
+import org.apache.pdfbox.io.RandomAccessBufferedFile;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.ScratchFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.util.DateConverter;
 import org.junit.Before;
@@ -90,32 +92,21 @@ public class TestPDFParser
     @Test
     public void testPDFParserFile() throws IOException
     {
-        executeParserTest(new RandomAccessBufferedFileInputStream(new File(PATH_OF_PDF)), MemoryUsageSetting.setupMainMemoryOnly());
-    }
-
-    @Test
-    public void testPDFParserInputStream() throws IOException
-    {
-        executeParserTest(new RandomAccessBufferedFileInputStream(new FileInputStream(PATH_OF_PDF)), MemoryUsageSetting.setupMainMemoryOnly());
+        executeParserTest(new RandomAccessBufferedFile(new File(PATH_OF_PDF)), MemoryUsageSetting.setupMainMemoryOnly());
     }
 
     @Test
     public void testPDFParserFileScratchFile() throws IOException
     {
-        executeParserTest(new RandomAccessBufferedFileInputStream(new File(PATH_OF_PDF)), MemoryUsageSetting.setupTempFileOnly());
+        executeParserTest(new RandomAccessBufferedFile(new File(PATH_OF_PDF)), MemoryUsageSetting.setupTempFileOnly());
     }
 
-    @Test
-    public void testPDFParserInputStreamScratchFile() throws IOException
-    {
-        executeParserTest(new RandomAccessBufferedFileInputStream(new FileInputStream(PATH_OF_PDF)), MemoryUsageSetting.setupTempFileOnly());
-    }
-    
     @Test
     public void testPDFParserMissingCatalog() throws IOException, URISyntaxException
     {
         // PDFBOX-3060
-        PDDocument.load(new File(TestPDFParser.class.getResource("MissingCatalog.pdf").toURI())).close();
+        Loader.loadPDF(new File(TestPDFParser.class.getResource("MissingCatalog.pdf").toURI()))
+                .close();
     }
 
     /**
@@ -128,7 +119,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3208() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR,"PDFBOX-3208-L33MUTT2SVCWGCS6UIYL5TH3PNPXHIS6.pdf")))
+        try (PDDocument doc = Loader
+                .loadPDF(new File(TARGETPDFDIR, "PDFBOX-3208-L33MUTT2SVCWGCS6UIYL5TH3PNPXHIS6.pdf")))
         {
             PDDocumentInformation di = doc.getDocumentInformation();
             assertEquals("Liquent Enterprise Services", di.getAuthor());
@@ -151,7 +143,7 @@ public class TestPDFParser
     @Test
     public void testPDFBox3940() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR,"PDFBOX-3940-079977.pdf")))
+        try (PDDocument doc = Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-3940-079977.pdf")))
         {
             PDDocumentInformation di = doc.getDocumentInformation();
             assertEquals("Unknown", di.getAuthor());
@@ -172,7 +164,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3783() throws IOException
     {
-        PDDocument.load(new File(TARGETPDFDIR,"PDFBOX-3783-72GLBIGUC6LB46ELZFBARRJTLN4RBSQM.pdf")).close();
+        Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-3783-72GLBIGUC6LB46ELZFBARRJTLN4RBSQM.pdf"))
+                .close();
     }
 
     /**
@@ -184,7 +177,7 @@ public class TestPDFParser
     @Test
     public void testPDFBox3785() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR,"PDFBOX-3785-202097.pdf")))
+        try (PDDocument doc = Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-3785-202097.pdf")))
         {
             assertEquals(11, doc.getNumberOfPages());
         }
@@ -198,7 +191,7 @@ public class TestPDFParser
     @Test
     public void testPDFBox3947() throws IOException
     {
-        PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-3947-670064.pdf")).close();
+        Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-3947-670064.pdf")).close();
     }
 
     /**
@@ -209,7 +202,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3948() throws IOException
     {
-        PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-3948-EUWO6SQS5TM4VGOMRD3FLXZHU35V2CP2.pdf")).close();
+        Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-3948-EUWO6SQS5TM4VGOMRD3FLXZHU35V2CP2.pdf"))
+                .close();
     }
 
     /**
@@ -220,7 +214,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3949() throws IOException
     {
-        PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-3949-MKFYUGZWS3OPXLLVU2Z4LWCTVA5WNOGF.pdf")).close();
+        Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-3949-MKFYUGZWS3OPXLLVU2Z4LWCTVA5WNOGF.pdf"))
+                .close();
     }
 
     /**
@@ -231,7 +226,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3950() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-3950-23EGDHXSBBYQLKYOKGZUOVYVNE675PRD.pdf")))
+        try (PDDocument doc = Loader
+                .loadPDF(new File(TARGETPDFDIR, "PDFBOX-3950-23EGDHXSBBYQLKYOKGZUOVYVNE675PRD.pdf")))
         {
             assertEquals(4, doc.getNumberOfPages());
             PDFRenderer renderer = new PDFRenderer(doc);
@@ -261,7 +257,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3951() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-3951-FIHUZWDDL2VGPOE34N6YHWSIGSH5LVGZ.pdf")))
+        try (PDDocument doc = Loader
+                .loadPDF(new File(TARGETPDFDIR, "PDFBOX-3951-FIHUZWDDL2VGPOE34N6YHWSIGSH5LVGZ.pdf")))
         {
             assertEquals(143, doc.getNumberOfPages());
         }
@@ -275,7 +272,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3964() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR, "PDFBOX-3964-c687766d68ac766be3f02aaec5e0d713_2.pdf")))
+        try (PDDocument doc = Loader
+                .loadPDF(new File(TARGETPDFDIR, "PDFBOX-3964-c687766d68ac766be3f02aaec5e0d713_2.pdf")))
         {
             assertEquals(10, doc.getNumberOfPages());
         }
@@ -290,7 +288,8 @@ public class TestPDFParser
     @Test
     public void testPDFBox3977() throws IOException
     {
-        try (PDDocument doc = PDDocument.load(new File(TARGETPDFDIR,"PDFBOX-3977-63NGFQRI44HQNPIPEJH5W2TBM6DJZWMI.pdf")))
+        try (PDDocument doc = Loader
+                .loadPDF(new File(TARGETPDFDIR, "PDFBOX-3977-63NGFQRI44HQNPIPEJH5W2TBM6DJZWMI.pdf")))
         {
             PDDocumentInformation di = doc.getDocumentInformation();
             assertEquals("QuarkXPress(tm) 6.52", di.getCreator());
@@ -309,15 +308,69 @@ public class TestPDFParser
     @Test
     public void testParseGenko() throws IOException
     {
-        PDDocument.load(new File(TARGETPDFDIR, "genko_oc_shiryo1.pdf")).close();
+        Loader.loadPDF(new File(TARGETPDFDIR, "genko_oc_shiryo1.pdf")).close();
+    }
+
+    /**
+     * Test parsing the file from PDFBOX-4338, which brought an
+     * ArrayIndexOutOfBoundsException before the bug was fixed.
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testPDFBox4338() throws IOException
+    {
+        Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-4338.pdf")).close();
+    }
+
+    /**
+     * Test parsing the file from PDFBOX-4339, which brought a
+     * NullPointerException before the bug was fixed.
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testPDFBox4339() throws IOException
+    {
+        Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-4339.pdf")).close();
+    }
+
+    /**
+     * Test parsing the "WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf" file, which is susceptible to
+     * regression.
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testPDFBox4153() throws IOException
+    {
+        try (PDDocument doc = Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-4153-WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf")))
+        {
+            PDDocumentOutline documentOutline = doc.getDocumentCatalog().getDocumentOutline();
+            PDOutlineItem firstChild = documentOutline.getFirstChild();
+            assertEquals("Main Menu", firstChild.getTitle());
+        }
+    }
+
+    /**
+     * Test that PDFBOX-4490 has 3 pages.
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testPDFBox4490() throws IOException
+    {
+        try (PDDocument doc = Loader.loadPDF(new File(TARGETPDFDIR, "PDFBOX-4490.pdf")))
+        {
+            assertEquals(3, doc.getNumberOfPages());
+        }
     }
 
     private void executeParserTest(RandomAccessRead source, MemoryUsageSetting memUsageSetting) throws IOException
     {
         ScratchFile scratchFile = new ScratchFile(memUsageSetting);
         PDFParser pdfParser = new PDFParser(source, scratchFile);
-        pdfParser.parse();
-        try (COSDocument doc = pdfParser.getDocument())
+        try (PDDocument doc = pdfParser.parse())
         {
             assertNotNull(doc);
         }

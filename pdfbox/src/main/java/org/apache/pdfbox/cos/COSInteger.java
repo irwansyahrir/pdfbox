@@ -18,6 +18,7 @@ package org.apache.pdfbox.cos;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 
 /**
  * This class represents an integer number in a PDF document.
@@ -140,17 +141,6 @@ public final class COSInteger extends COSNumber
     }
 
     /**
-     * polymorphic access to value as float.
-     *
-     * @return The double value of this object.
-     */
-    @Override
-    public double doubleValue()
-    {
-        return value;
-    }
-
-    /**
      * Polymorphic access to value as int
      * This will get the integer value of this object.
      *
@@ -195,7 +185,7 @@ public final class COSInteger extends COSNumber
      */
     public void writePDF( OutputStream output ) throws IOException
     {
-        output.write(String.valueOf(value).getBytes("ISO-8859-1"));
+        output.write(String.valueOf(value).getBytes(StandardCharsets.ISO_8859_1));
     }
 
 }

@@ -73,15 +73,15 @@ public class TestListBox extends TestCase
     }
 
     /**
-     * This will test the radio button PDModel.
+     * This will test the list box PDModel.
      *
      * @throws IOException If there is an error creating the field.
      */
-    public void testChoicePDModel() throws IOException
+    public void testListboxPDModel() throws IOException
     {
 
         /*
-         * Set up two data list which will be used for the tests
+         * Set up two data lists which will be used for the tests
          */
 
         // export values
@@ -117,7 +117,7 @@ public class TestListBox extends TestCase
             String defaultAppearanceString = "/Helv 0 Tf 0 g";
             form.setDefaultAppearance(defaultAppearanceString);
             
-            PDChoice choice = new PDListBox(form);
+            PDListBox choice = new PDListBox(form);
             
             choice.setDefaultAppearance("/Helv 12 Tf 0g");
             
@@ -145,6 +145,12 @@ public class TestListBox extends TestCase
             choice.setOptions(exportValues);
             assertEquals(exportValues,choice.getOptionsDisplayValues());
             assertEquals(exportValues,choice.getOptionsExportValues());
+
+            // Test bug 1 of PDFBOX-4252 when top index is not null
+            choice.setTopIndex(1);
+            choice.setValue(exportValues.get(2));
+            assertEquals(exportValues.get(2), choice.getValue().get(0));
+            choice.setTopIndex(null); // reset
 
             // assert that the option values have been correctly set
             COSArray optItem = (COSArray) choice.getCOSObject().getItem(COSName.OPT);
@@ -181,7 +187,7 @@ public class TestListBox extends TestCase
             
             // ensure that the choice field does allow multiple selections
             choice.setMultiSelect(true);
-            // now this call must suceed
+            // now this call must succeed
             choice.setValue(exportValues);
             
             // assert that the option values have been correctly set
@@ -222,7 +228,9 @@ public class TestListBox extends TestCase
             choice.setSort(true);
             choice.setOptions(exportValues, displayValues);
             assertEquals(choice.getOptionsDisplayValues().get(0),"display01");
-            
+            assertEquals(choice.getOptionsDisplayValues().get(1),"display02");
+            assertEquals(choice.getOptionsDisplayValues().get(2),"display03");
+
             /*
              * Setting options with an empty list
              */

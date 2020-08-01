@@ -20,7 +20,7 @@ package org.apache.pdfbox.examples.pdmodel;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -31,7 +31,6 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
-import org.apache.pdfbox.util.Charsets;
 
 /**
  * Inspired from <a href=
@@ -50,25 +49,11 @@ public class BengaliPdfGenerationHelloWorld
     private static final int FONT_SIZE = 20;
     private static final int MARGIN = 20;
 
-    static
-    {
-        try
-        {
-            // turns off log info about using KCMS (faster than LCMS) if available
-            Class.forName("sun.java2d.cmm.kcms.KcmsServiceProvider");
-            System.setProperty("sun.java2d.cmm", "sun.java2d.cmm.kcms.KcmsServiceProvider");
-        }
-        catch (ClassNotFoundException e)
-        {
-            // ignore
-        }
-    }
-
     private BengaliPdfGenerationHelloWorld()
     {
     }
 
-    public static void main(String[] args) throws IOException, URISyntaxException
+    public static void main(String[] args) throws IOException
     {
         if (args.length != 1)
         {
@@ -197,7 +182,7 @@ public class BengaliPdfGenerationHelloWorld
         List<String> lines = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(
-                BengaliPdfGenerationHelloWorld.class.getResourceAsStream(TEXT_SOURCE_FILE), Charsets.UTF_8));)
+                BengaliPdfGenerationHelloWorld.class.getResourceAsStream(TEXT_SOURCE_FILE), StandardCharsets.UTF_8));)
         {
             while (true)
             {

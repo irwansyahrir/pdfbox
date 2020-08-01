@@ -16,6 +16,7 @@
  */
 package org.apache.pdfbox.pdmodel.interactive.digitalsignature;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -284,6 +285,7 @@ public class PDSignature implements COSObjectable
         }
 
         dictionary.setItem(COSName.BYTERANGE, ary);
+        ary.setDirect(true);
     }
 
     /**
@@ -305,7 +307,7 @@ public class PDSignature implements COSObjectable
     /**
      * Will return the embedded signature between the byterange gap.
      *
-     * @param pdfFile The signed pdf file as InputStream
+     * @param pdfFile The signed pdf file as InputStream. It will be closed in this method.
      * @return a byte array containing the signature
      * @throws IOException if the pdfFile can't be read
      */
@@ -315,7 +317,7 @@ public class PDSignature implements COSObjectable
         int begin = byteRange[0]+byteRange[1]+1;
         int len = byteRange[2]-begin;
 
-        return getContents(new COSFilterInputStream(pdfFile,new int[] {begin,len}));
+        return getConvertedContents(new COSFilterInputStream(pdfFile,new int[] {begin,len}));
     }
 
     /**
@@ -329,36 +331,36 @@ public class PDSignature implements COSObjectable
     {
         int[] byteRange = getByteRange();
         int begin = byteRange[0]+byteRange[1]+1;
-        int len = byteRange[2]-begin;
+        int len = byteRange[2]-begin-1;
 
-        return getContents(new COSFilterInputStream(pdfFile,new int[] {begin,len}));
+        return getConvertedContents(new ByteArrayInputStream(pdfFile, begin, len));
     }
 
-    private byte[] getContents(COSFilterInputStream fis) throws IOException
+    private byte[] getConvertedContents(InputStream is) throws IOException
     {
-        ByteArrayOutputStream byteOS = new ByteArrayOutputStream(1024);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
         byte[] buffer = new byte[1024];
-        int c;
-        while ((c = fis.read(buffer)) != -1)
+        int readLen;
+        while ((readLen = is.read(buffer)) != -1)
         {
+            int writeLen = readLen;
+            int start = 0;
             // Filter < and (
             if(buffer[0]==0x3C || buffer[0]==0x28)
             {
-                byteOS.write(buffer, 1, c);
+                ++start;
+                --writeLen;
             }
-            // Filter > and )
-            else if(buffer[c-1]==0x3E || buffer[c-1]==0x29)
+            // Filter > and ) at the end
+            if(buffer[readLen-1]==0x3E || buffer[readLen-1]==0x29)
             {
-                byteOS.write(buffer, 0, c-1);
+                --writeLen;
             }
-            else
-            {
-                byteOS.write(buffer, 0, c);
-            }
+            baos.write(buffer, start, writeLen);
         }
-        fis.close();
+        is.close();
 
-        return COSString.parseHex(byteOS.toString("ISO-8859-1")).getBytes();
+        return COSString.parseHex(baos.toString("ISO-8859-1")).getBytes();
     }
 
     /**
@@ -377,10 +379,10 @@ public class PDSignature implements COSObjectable
      * Return the signed content of the document. This is not a PDF file, nor is it the PDF file
      * before signing, it is the byte sequence made of the input minus the area where the signature
      * bytes will be. See "The ByteRange and signature value" in the document
-     * <a href="https://www.adobe.com/devnet-docs/acrobatetk/tools/DigSig/Acrobat_DigitalSignatures_in_PDF.pdf#page=5">Digital
+     * <a href="https://www.adobe.com/content/dam/acom/en/devnet/acrobat/pdfs/DigitalSignaturesInPDF.pdf#page=5">Digital
      * Signatures in a PDF</a>.
      *
-     * @param pdfFile The signed pdf file as InputStream
+     * @param pdfFile The signed pdf file as InputStream. It will be closed in this method.
      * @return a byte array containing only the signed part of the content
      * @throws IOException if the pdfFile can't be read
      */
@@ -396,7 +398,7 @@ public class PDSignature implements COSObjectable
      * Return the signed content of the document. This is not a PDF file, nor is it the PDF file
      * before signing, it is the byte sequence made of the input minus the area where the signature
      * bytes will be. See "The ByteRange and signature value" in the document
-     * <a href="https://www.adobe.com/devnet-docs/acrobatetk/tools/DigSig/Acrobat_DigitalSignatures_in_PDF.pdf#page=5">Digital
+     * <a href="https://www.adobe.com/content/dam/acom/en/devnet/acrobat/pdfs/DigitalSignaturesInPDF.pdf#page=5">Digital
      * Signatures in a PDF</a>.
      *
      * @param pdfFile The signed pdf file as byte array
@@ -412,14 +414,14 @@ public class PDSignature implements COSObjectable
     }
 
     /**
-     * PDF signature build dictionary. Provides informations about the signature handler.
+     * PDF signature build dictionary. Provides information about the signature handler.
      *
      * @return the pdf signature build dictionary.
      */
     public PDPropBuild getPropBuild()
     {
         PDPropBuild propBuild = null;
-        COSDictionary propBuildDic = (COSDictionary)dictionary.getDictionaryObject(COSName.PROP_BUILD);
+        COSDictionary propBuildDic = dictionary.getCOSDictionary(COSName.PROP_BUILD);
         if (propBuildDic != null)
         {
             propBuild = new PDPropBuild(propBuildDic);
@@ -428,7 +430,7 @@ public class PDSignature implements COSObjectable
     }
 
     /**
-     * PDF signature build dictionary. Provides informations about the signature handler.
+     * PDF signature build dictionary. Provides information about the signature handler.
      *
      * @param propBuild the prop build
      */

@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.filter.DecodeOptions;
 import org.apache.pdfbox.pdmodel.common.COSObjectable;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
@@ -85,7 +86,9 @@ public interface PDImage extends COSObjectable
     InputStream createInputStream(List<String> stopFilters) throws IOException;
 
     /**
-     * Returns an InputStream, passing additional options to each filter
+     * Returns an InputStream, passing additional options to each filter. As a side effect, the
+     * filterSubsampled flag is set in {@link DecodeOptions}.
+     *
      * @param options Additional decoding options passed to the filters used
      * @return Decoded stream
      * @throws IOException if the data could not be read
@@ -180,4 +183,12 @@ public interface PDImage extends COSObjectable
      * Returns the suffix for this image type, e.g. "jpg"
      */
     String getSuffix();
+    
+    /**
+     * Convert this image to a COS object.
+     *
+     * @return The cos object that matches this image object.
+     */
+    @Override
+    COSDictionary getCOSObject();
 }

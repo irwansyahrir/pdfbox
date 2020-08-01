@@ -21,6 +21,8 @@ import java.io.IOException;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -123,7 +125,7 @@ public class TestFields extends TestCase
      */
     public void testAcroFormsBasicFields() throws IOException
     {       
-        try (PDDocument doc = PDDocument.load(new File(PATH_OF_PDF)))
+        try (PDDocument doc = Loader.loadPDF(new File(PATH_OF_PDF)))
         {            
             // get and assert that there is a form
             PDAcroForm form = doc.getDocumentCatalog().getAcroForm();
@@ -182,7 +184,7 @@ public class TestFields extends TestCase
      */
     public void testWidgetMissingRect() throws IOException
     {        
-        try (PDDocument doc = PDDocument.load(new File(PATH_OF_PDF)))
+        try (PDDocument doc = Loader.loadPDF(new File(PATH_OF_PDF)))
         {            
             PDAcroForm form = doc.getDocumentCatalog().getAcroForm();
             

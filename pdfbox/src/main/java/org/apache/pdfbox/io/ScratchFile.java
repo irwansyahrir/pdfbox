@@ -44,7 +44,7 @@ import org.apache.commons.logging.LogFactory;
  * 
  * <p>Using this class for {@link RandomAccess} buffers allows for a direct control
  * on the maximum memory usage and allows processing large files for which we
- * otherwise would get an {@link OutOfMemoryError} in case of using {@link RandomAccessBuffer}.</p>
+ * otherwise would get an {@link OutOfMemoryError} in case of using {@link RandomAccessReadBuffer}.</p>
  * 
  * <p>This base class for providing pages is thread safe (the buffer implementations are not).</p>
  */
@@ -216,7 +216,7 @@ public class ScratchFile implements Closeable
      * if no new pages could be added because we reached the maximum of
      * {@link Integer#MAX_VALUE} pages.
      * 
-     * <p>If scratch file uage is allowed and scratch file does not exist already
+     * <p>If scratch file usage is allowed and scratch file does not exist already
      * it will be created.</p>
      * 
      * <p>Only to be called under synchronization on {@link #freePages}.</p>
@@ -441,7 +441,7 @@ public class ScratchFile implements Closeable
         ScratchFileBuffer buf = new ScratchFileBuffer(this);
         
         byte[] byteBuffer = new byte[8192];
-        int bytesRead = 0;
+        int bytesRead;
         while ((bytesRead = input.read(byteBuffer)) > -1)
         {
             buf.write(byteBuffer, 0, bytesRead);
@@ -511,15 +511,9 @@ public class ScratchFile implements Closeable
                 }
             }
             
-            if (file != null)
+            if (file != null && !file.delete() && file.exists() && ioexc == null)
             {
-                if (!file.delete())
-                {
-                    if (file.exists() && (ioexc == null))
-                    {
-                        ioexc = new IOException("Error deleting scratch file: " + file.getAbsolutePath());
-                    }
-                }
+                ioexc = new IOException("Error deleting scratch file: " + file.getAbsolutePath());
             }
         }
         

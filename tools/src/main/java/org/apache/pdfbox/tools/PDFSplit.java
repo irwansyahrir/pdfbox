@@ -21,8 +21,9 @@ import java.io.IOException;
 
 import java.util.List;
 
-import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.multipdf.Splitter;
+import org.apache.pdfbox.pdmodel.PDDocument;
 
 /**
  * This is the main program that will take a pdf document and split it into
@@ -32,6 +33,7 @@ import org.apache.pdfbox.multipdf.Splitter;
  */
 public final class PDFSplit
 {
+    @SuppressWarnings({"squid:S2068"})
     private static final String PASSWORD = "-password";
     private static final String SPLIT = "-split";
     private static final String START_PAGE = "-startPage";
@@ -59,6 +61,7 @@ public final class PDFSplit
 
     private void split( String[] args ) throws IOException
     {
+        @SuppressWarnings({"squid:S2068"})
         String password = "";
         String split = null;
         String startPage = null;
@@ -129,7 +132,7 @@ public final class PDFSplit
             List<PDDocument> documents = null;
             try
             {
-                document = PDDocument.load(new File(pdfFile), password);
+                document = Loader.loadPDF(new File(pdfFile), password);
 
                 int numberOfPages = document.getNumberOfPages();
                 boolean startEndPageSet = false;
@@ -199,7 +202,7 @@ public final class PDFSplit
                 + "  -split     <integer>   : split after this many pages (default 1, if startPage and endPage are unset)\n"
                 + "  -startPage <integer>   : start page\n"
                 + "  -endPage   <integer>   : end page\n"
-                + "  -outputPrefix <prefix> : Filename prefix for splitted files\n"
+                + "  -outputPrefix <prefix> : Filename prefix for split files\n"
                 + "  <inputfile>            : The PDF document to use\n";
         
         System.err.println(message);

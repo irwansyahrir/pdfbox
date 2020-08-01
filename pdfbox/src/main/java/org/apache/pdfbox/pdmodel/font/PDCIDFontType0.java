@@ -33,7 +33,6 @@ import org.apache.fontbox.cff.CFFType1Font;
 import org.apache.fontbox.cff.Type2CharString;
 import org.apache.fontbox.util.BoundingBox;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.util.Matrix;
@@ -80,7 +79,7 @@ public class PDCIDFontType0 extends PDCIDFont
             PDStream ff3Stream = fd.getFontFile3();
             if (ff3Stream != null)
             {
-                bytes = IOUtils.toByteArray(ff3Stream.createInputStream());
+                bytes = ff3Stream.toByteArray();
             }
         }
 
@@ -97,7 +96,7 @@ public class PDCIDFontType0 extends PDCIDFont
             CFFParser cffParser = new CFFParser();
             try
             {
-                cffFont = cffParser.parse(bytes, new ByteSource()).get(0);
+                cffFont = cffParser.parse(bytes, new FF3ByteSource()).get(0);
             }
             catch (IOException e)
             {
@@ -306,7 +305,7 @@ public class PDCIDFontType0 extends PDCIDFont
      * Returns the name of the glyph with the given character code. This is done by looking up the
      * code in the parent font's ToUnicode map and generating a glyph name from that.
      */
-    private String getGlyphName(int code) throws IOException
+    private String getGlyphName(int code)
     {
         String unicodes = parent.toUnicode(code);
         if (unicodes == null)
@@ -448,11 +447,15 @@ public class PDCIDFontType0 extends PDCIDFont
     {
         int cid = codeToCID(code);
 
-        float height = 0;
+        float height;
         if (!glyphHeights.containsKey(cid))
         {
-            height =  (float) getType2CharString(cid).getBounds().getHeight();
+            height = (float) getType2CharString(cid).getBounds().getHeight();
             glyphHeights.put(cid, height);
+        }
+        else
+        {
+            height = glyphHeights.get(cid);
         }
         return height;
     }
@@ -474,13 +477,12 @@ public class PDCIDFontType0 extends PDCIDFont
         return 500;
     }
 
-    private class ByteSource implements CFFParser.ByteSource
+    private class FF3ByteSource implements CFFParser.ByteSource
     {
         @Override
         public byte[] getBytes() throws IOException
         {
-            PDStream ff3Stream = getFontDescriptor().getFontFile3();
-            return IOUtils.toByteArray(ff3Stream.createInputStream());
+            return getFontDescriptor().getFontFile3().toByteArray();
         }
     }
 }

@@ -21,11 +21,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import javax.imageio.ImageIO;
 import javax.imageio.stream.MemoryCacheImageOutputStream;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -57,10 +59,8 @@ public class CreateGradientShadingPDF
      */
     public void create(String file) throws IOException
     {
-        PDDocument document = null;
-        try
+        try (PDDocument document = new PDDocument())
         {
-            document = new PDDocument();
             PDPage page = new PDPage();
             document.addPage(page);
 
@@ -69,16 +69,16 @@ public class CreateGradientShadingPDF
             COSDictionary fdict = new COSDictionary();
             fdict.setInt(COSName.FUNCTION_TYPE, 2);
             COSArray domain = new COSArray();
-            domain.add(COSInteger.get(0));
-            domain.add(COSInteger.get(1));
+            domain.add(COSInteger.ZERO);
+            domain.add(COSInteger.ONE);
             COSArray c0 = new COSArray();
-            c0.add(COSFloat.get("1"));
-            c0.add(COSFloat.get("0"));
-            c0.add(COSFloat.get("0"));
+            c0.add(COSInteger.ONE);
+            c0.add(COSInteger.ZERO);
+            c0.add(COSInteger.ZERO);
             COSArray c1 = new COSArray();
-            c1.add(COSFloat.get("0.5"));
-            c1.add(COSFloat.get("1"));
-            c1.add(COSFloat.get("0.5"));
+            c1.add(COSNumber.get("0.5"));
+            c1.add(COSInteger.ONE);
+            c1.add(COSNumber.get("0.5"));
             fdict.setItem(COSName.DOMAIN, domain);
             fdict.setItem(COSName.C0, c0);
             fdict.setItem(COSName.C1, c1);
@@ -191,20 +191,12 @@ public class CreateGradientShadingPDF
             }
             
             document.save(file);
-            document.close();
-            
+        }
+        try (PDDocument document = Loader.loadPDF(new File(file)))
+        {
             // render the PDF and save it into a PNG file
-            document = PDDocument.load(new File(file));
             BufferedImage bim = new PDFRenderer(document).renderImageWithDPI(0, 100);
             ImageIO.write(bim, "png", new File(file + ".png"));
-            document.close();
-        }
-        finally
-        {
-            if (document != null)
-            {
-                document.close();
-            }
         }
     }
 

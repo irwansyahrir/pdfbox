@@ -17,7 +17,6 @@
 package org.apache.pdfbox.debugger.ui;
 
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JMenu;
@@ -34,6 +33,7 @@ public class ViewMenu extends MenuBase
     private static final String SHOW_FONT_BBOX = "Show Approximate Text Bounds";
     private static final String SHOW_GLYPH_BOUNDS = "Show Glyph Bounds";
     private static final String ALLOW_SUBSAMPLING = "Allow subsampling";            
+    private static final String EXTRACT_TEXT = "Extract Text";            
 
     private JMenuItem viewModeItem;
     private JCheckBoxMenuItem showTextStripper;
@@ -41,8 +41,9 @@ public class ViewMenu extends MenuBase
     private JCheckBoxMenuItem showFontBBox;
     private JCheckBoxMenuItem showGlyphBounds;
     private JCheckBoxMenuItem allowSubsampling;
+    private JMenuItem extractTextMenuItem;
     
-    private PDFDebugger pdfDebugger;
+    private final PDFDebugger pdfDebugger;
 
     /**
      * Constructor.
@@ -55,6 +56,8 @@ public class ViewMenu extends MenuBase
 
     /**
      * Provides the ViewMenu instance.
+     *
+     * @param pdfDebugger PDFDebugger instance.
      *
      * @return ViewMenu instance.
      */
@@ -121,7 +124,18 @@ public class ViewMenu extends MenuBase
     {
         return instance.showGlyphBounds.isSelected();
     }
-    
+
+    /**
+     * Tell whether the "Extract Text" menu entry was hit.
+     *
+     * @param actionEvent
+     * @return true if the "Extract Text" menu entry was hit.
+     */
+    public static boolean isExtractText(ActionEvent actionEvent)
+    {
+        return EXTRACT_TEXT.equals(actionEvent.getActionCommand());
+    }
+
     /**
      * State if subsampling for image rendering shall be used.
      * 
@@ -145,25 +159,21 @@ public class ViewMenu extends MenuBase
         {
             viewModeItem = new JMenuItem("Show Pages");
         }
-        viewModeItem.addActionListener(new ActionListener()
+        viewModeItem.addActionListener(actionEvent ->
         {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent)
+            if (pdfDebugger.isPageMode())
             {
-                if (pdfDebugger.isPageMode())
-                {
-                    viewModeItem.setText("Show Pages");
-                    pdfDebugger.setPageMode(false);
-                }
-                else
-                {
-                    viewModeItem.setText("Show Internal Structure");
-                    pdfDebugger.setPageMode(true);
-                }
-                if (pdfDebugger.hasDocument())
-                {
-                    pdfDebugger.initTree();
-                }
+                viewModeItem.setText("Show Pages");
+                pdfDebugger.setPageMode(false);
+            }
+            else
+            {
+                viewModeItem.setText("Show Internal Structure");
+                pdfDebugger.setPageMode(true);
+            }
+            if (pdfDebugger.hasDocument())
+            {
+                pdfDebugger.initTree();
             }
         });
         viewMenu.add(viewModeItem);
@@ -175,6 +185,14 @@ public class ViewMenu extends MenuBase
         RotationMenu rotationMenu = RotationMenu.getInstance();
         rotationMenu.setEnableMenu(false);
         viewMenu.add(rotationMenu.getMenu());
+
+        ImageTypeMenu imageTypeMenu = ImageTypeMenu.getInstance();
+        imageTypeMenu.setEnableMenu(false);
+        viewMenu.add(imageTypeMenu.getMenu());
+
+        RenderDestinationMenu renderDestinationMenu = RenderDestinationMenu.getInstance();
+        renderDestinationMenu.setEnableMenu(false);
+        viewMenu.add(renderDestinationMenu.getMenu());
 
         viewMenu.addSeparator();
 
@@ -199,6 +217,12 @@ public class ViewMenu extends MenuBase
         allowSubsampling = new JCheckBoxMenuItem(ALLOW_SUBSAMPLING);
         allowSubsampling.setEnabled(false);
         viewMenu.add(allowSubsampling);
+
+        viewMenu.addSeparator();
+
+        extractTextMenuItem = new JMenuItem(EXTRACT_TEXT);
+        extractTextMenuItem.setEnabled(false);
+        viewMenu.add(extractTextMenuItem);
 
         return viewMenu;
     }

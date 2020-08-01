@@ -174,21 +174,19 @@ public class PDExtendedGraphicsState implements COSObjectable
     }
 
     /**
-     * Returns the provided default value in case 'standard' valu
-     * is <code>null</code>. To be used in cases unboxing may
-     * lead to a NPE.
-     *  
-     * @param _value  'standard' value
-     * @param _default  default value 
-     * 
-     * @return 'standard' value if not <code>null</code>
-     *         otherwise default value
+     * Returns the provided default value in case 'standard' value is <code>null</code>. To be used
+     * in cases unboxing may lead to a NPE.
+     *
+     * @param standardValue 'standard' value
+     * @param defaultValue default value
+     *
+     * @return 'standard' value if not <code>null</code> otherwise default value
      */
-    private float defaultIfNull( Float _value, float _default ) 
+    private float defaultIfNull(Float standardValue, float defaultValue)
     {
-        return _value != null ? _value : _default;
+        return standardValue != null ? standardValue : defaultValue;
     }
-    
+
     /**
      * This will get the underlying dictionary that this class acts on.
      *
@@ -575,10 +573,14 @@ public class PDExtendedGraphicsState implements COSObjectable
     /**
      * Returns the soft mask stored in the COS dictionary
      *
-     * @return the soft mask
+     * @return the soft mask or null if there isn't any.
      */
     public PDSoftMask getSoftMask()
     {
+        if (!dict.containsKey(COSName.SMASK))
+        {
+            return null;
+        }
         return PDSoftMask.create(dict.getDictionaryObject(COSName.SMASK));
     }
 

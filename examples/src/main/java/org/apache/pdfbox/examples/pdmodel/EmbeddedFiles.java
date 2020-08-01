@@ -18,6 +18,7 @@ package org.apache.pdfbox.examples.pdmodel;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.GregorianCalendar;
@@ -27,11 +28,10 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentNameDictionary;
 import org.apache.pdfbox.pdmodel.PDEmbeddedFilesNameTreeNode;
 import org.apache.pdfbox.pdmodel.PDPage;
-
 import org.apache.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecification;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
-
+import org.apache.pdfbox.pdmodel.PageMode;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 
@@ -45,9 +45,8 @@ public class EmbeddedFiles
     /**
      * Constructor.
      */
-    public EmbeddedFiles()
+    private EmbeddedFiles()
     {
-        super();
     }
 
     /**
@@ -59,8 +58,7 @@ public class EmbeddedFiles
      */
     public void doIt( String file) throws IOException
     {
-        try ( // the document
-                PDDocument doc = new PDDocument())
+        try (PDDocument doc = new PDDocument())
         {
             PDPage page = new PDPage();
             doc.addPage( page );
@@ -80,19 +78,25 @@ public class EmbeddedFiles
 
             //first create the file specification, which holds the embedded file
             PDComplexFileSpecification fs = new PDComplexFileSpecification();
+
+            // use both methods for backwards, cross-platform and cross-language compatibility.
             fs.setFile( "Test.txt" );
+            fs.setFileUnicode("Test.txt");
+
             //create a dummy file stream, this would probably normally be a FileInputStream
-            byte[] data = "This is the contents of the embedded file".getBytes("ISO-8859-1");
-            ByteArrayInputStream fakeFile =
-                new ByteArrayInputStream( data );
+            byte[] data = "This is the contents of the embedded file".getBytes(StandardCharsets.ISO_8859_1);
+            ByteArrayInputStream fakeFile = new ByteArrayInputStream(data);
             PDEmbeddedFile ef = new PDEmbeddedFile(doc, fakeFile );
             //now lets some of the optional parameters
-            ef.setSubtype( "test/plain" );
+            ef.setSubtype( "text/plain" );
             ef.setSize( data.length );
             ef.setCreationDate( new GregorianCalendar() );
-            fs.setEmbeddedFile( ef );
 
-            // create a new tree node and add the embedded file 
+            // use both methods for backwards, cross-platform and cross-language compatibility.
+            fs.setEmbeddedFile( ef );
+            fs.setEmbeddedFileUnicode(ef);
+
+            // create a new tree node and add the embedded file
             PDEmbeddedFilesNameTreeNode treeNode = new PDEmbeddedFilesNameTreeNode();
             treeNode.setNames( Collections.singletonMap( "My first attachment",  fs ) );
             // add the new node as kid to the root node
@@ -104,6 +108,8 @@ public class EmbeddedFiles
             names.setEmbeddedFiles( efTree );
             doc.getDocumentCatalog().setNames( names );
 
+            // show attachments panel in some viewers 
+            doc.getDocumentCatalog().setPageMode(PageMode.USE_ATTACHMENTS);
 
             doc.save( file );
         }

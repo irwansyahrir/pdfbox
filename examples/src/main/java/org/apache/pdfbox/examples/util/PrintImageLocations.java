@@ -26,6 +26,8 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.contentstream.operator.DrawObject;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.PDFStreamEngine;
 
 import java.io.File;
@@ -75,7 +77,7 @@ public class PrintImageLocations extends PDFStreamEngine
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 PrintImageLocations printer = new PrintImageLocations();
                 int pageNum = 0;
@@ -101,7 +103,7 @@ public class PrintImageLocations extends PDFStreamEngine
     protected void processOperator( Operator operator, List<COSBase> operands) throws IOException
     {
         String operation = operator.getName();
-        if( "Do".equals(operation) )
+        if (OperatorName.DRAW_OBJECT.equals(operation))
         {
             COSName objectName = (COSName) operands.get( 0 );
             PDXObject xobject = getResources().getXObject( objectName );

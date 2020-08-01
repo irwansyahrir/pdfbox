@@ -23,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import javax.imageio.ImageIO;
 import junit.framework.TestCase;
+
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSInteger;
@@ -178,7 +180,7 @@ public class PDInlineImageTest extends TestCase
         document.save(pdfFile);
         document.close();
 
-        document = PDDocument.load(pdfFile);
+        document = Loader.loadPDF(pdfFile);
         new PDFRenderer(document).renderImage(0);
         document.close();
 

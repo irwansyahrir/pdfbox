@@ -18,19 +18,15 @@
 package org.apache.pdfbox.examples.signature;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.SortedMap;
-import java.util.TreeMap;
 
-import org.apache.pdfbox.cos.COSBase;
-import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.io.IOUtils;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.util.Hex;
@@ -88,21 +84,21 @@ public class CreateEmbeddedTimeStamp
         }
 
         // sign
-        try (PDDocument doc = PDDocument.load(inFile))
+        try (PDDocument doc = Loader.loadPDF(inFile))
         {
             document = doc;
-            processTimeStamping(outFile, inFile.getAbsolutePath());
+            processTimeStamping(inFile, outFile);
         }
     }
 
     /**
-     * Processes the time-stamping of the Signature.
+     * Processes the time-stamping of the signature.
      * 
+     * @param inFile The existing PDF file
      * @param outFile Where the new file will be written to
-     * @param fileName of the existing file containing the pdf
      * @throws IOException
      */
-    private void processTimeStamping(File outFile, String fileName) throws IOException
+    private void processTimeStamping(File inFile, File outFile) throws IOException
     {
         int accessPermissions = SigUtils.getMDPPermission(document);
         if (accessPermissions == 1)
@@ -113,19 +109,16 @@ public class CreateEmbeddedTimeStamp
 
         try
         {
-            byte[] documentBytes;
-            try (FileInputStream fis = new FileInputStream(fileName))
-            {
-                documentBytes = IOUtils.toByteArray(fis);
-            }
+            byte[] documentBytes = Files.readAllBytes(inFile.toPath());
             processRelevantSignatures(documentBytes);
 
-            if (changedEncodedSignature != null)
+            if (changedEncodedSignature == null)
             {
-                try (FileOutputStream output = new FileOutputStream(outFile))
-                {
-                    embedNewSignatureIntoDocument(documentBytes, output);
-                }
+                throw new IllegalStateException("No signature");
+            }
+            try (FileOutputStream output = new FileOutputStream(outFile))
+            {
+                embedNewSignatureIntoDocument(documentBytes, output);
             }
         }
         catch (IOException | NoSuchAlgorithmException | CMSException e)
@@ -145,63 +138,37 @@ public class CreateEmbeddedTimeStamp
     private void processRelevantSignatures(byte[] documentBytes)
             throws IOException, CMSException, NoSuchAlgorithmException
     {
-        getRelevantSignature(document);
-        if (signature != null)
+        signature = SigUtils.getLastRelevantSignature(document);
+        if (signature == null)
         {
-            byte[] sigBlock = signature.getContents(documentBytes);
-            CMSSignedData signedData = new CMSSignedData(sigBlock);
-
-            System.out.println("INFO: Byte Range: " + Arrays.toString(signature.getByteRange()));
-
-            if (tsaUrl != null && tsaUrl.length() > 0)
-            {
-                ValidationTimeStamp validation = new ValidationTimeStamp(tsaUrl);
-                signedData = validation.addSignedTimeStamp(signedData);
-            }
-
-            byte[] newEncoded = Hex.getBytes(signedData.getEncoded());
-            int maxSize = signature.getByteRange()[2] - signature.getByteRange()[1];
-            System.out.println(
-                    "INFO: New Signature has Size: " + newEncoded.length + " maxSize: " + maxSize);
-
-            if (newEncoded.length > maxSize - 2)
-            {
-                throw new IOException(
-                        "New Signature is too big for existing Signature-Placeholder. Max Place: "
-                                + maxSize);
-            }
-            else
-            {
-                changedEncodedSignature = newEncoded;
-            }
+            return;
         }
-    }
 
-    /**
-     * Extracts last Document-Signature from the document. The signature will be set on the signature-field.
-     *
-     * @param document to get the Signature from
-     * @throws IOException
-     */
-    private void getRelevantSignature(PDDocument document) throws IOException
-    {
-        // we can't use getLastSignatureDictionary() because this will fail (see PDFBOX-3978) 
-        // if a signature is assigned to a pre-defined empty signature field that isn't the last.
-        // we get the last in time by looking at the offset in the PDF file.
-        SortedMap<Integer, PDSignature> sortedMap = new TreeMap<>();
-        for (PDSignature sig : document.getSignatureDictionaries())
+        byte[] sigBlock = signature.getContents(documentBytes);
+        CMSSignedData signedData = new CMSSignedData(sigBlock);
+
+        System.out.println("INFO: Byte Range: " + Arrays.toString(signature.getByteRange()));
+
+        if (tsaUrl != null && tsaUrl.length() > 0)
         {
-            int sigOffset = sig.getByteRange()[1];
-            sortedMap.put(sigOffset, sig);
+            ValidationTimeStamp validation = new ValidationTimeStamp(tsaUrl);
+            signedData = validation.addSignedTimeStamp(signedData);
         }
-        if (sortedMap.size() > 0)
+
+        byte[] newEncoded = Hex.getBytes(signedData.getEncoded());
+        int maxSize = signature.getByteRange()[2] - signature.getByteRange()[1];
+        System.out.println(
+                "INFO: New Signature has Size: " + newEncoded.length + " maxSize: " + maxSize);
+
+        if (newEncoded.length > maxSize - 2)
         {
-            PDSignature lastSignature = sortedMap.get(sortedMap.lastKey());
-            COSBase type = lastSignature.getCOSObject().getItem(COSName.TYPE);
-            if (type.equals(COSName.SIG))
-            {
-                signature = lastSignature;
-            }
+            throw new IOException(
+                    "New Signature is too big for existing Signature-Placeholder. Max Place: "
+                    + maxSize);
+        }
+        else
+        {
+            changedEncodedSignature = newEncoded;
         }
     }
 

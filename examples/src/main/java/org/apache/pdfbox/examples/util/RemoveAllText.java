@@ -22,8 +22,10 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdfwriter.ContentStreamWriter;
@@ -66,7 +68,7 @@ public final class RemoveAllText
         }
         else
         {
-            try (PDDocument document = PDDocument.load(new File(args[0])))
+            try (PDDocument document = Loader.loadPDF(new File(args[0])))
             {
                 if (document.isEncrypted())
                 {
@@ -132,9 +134,10 @@ public final class RemoveAllText
             if (token instanceof Operator)
             {
                 Operator op = (Operator) token;
-                if ("TJ".equals(op.getName()) ||
-                    "Tj".equals(op.getName()) ||
-                    "'".equals(op.getName()))
+                String opName = op.getName();
+                if (OperatorName.SHOW_TEXT_ADJUSTED.equals(opName)
+                        || OperatorName.SHOW_TEXT.equals(opName)
+                        || OperatorName.SHOW_TEXT_LINE.equals(opName))
                 {
                     // remove the argument to this operator
                     newTokens.remove(newTokens.size() - 1);
@@ -142,7 +145,7 @@ public final class RemoveAllText
                     token = parser.parseNextToken();
                     continue;
                 }
-                else if ("\"".equals(op.getName()))
+                else if (OperatorName.SHOW_TEXT_LINE_AND_SPACE.equals(opName))
                 {
                     // remove the 3 arguments to this operator
                     newTokens.remove(newTokens.size() - 1);

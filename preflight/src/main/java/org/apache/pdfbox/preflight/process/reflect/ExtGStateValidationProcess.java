@@ -31,13 +31,6 @@ import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_GRAPHIC_UNEXP
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_TRANSPARENCY_EXT_GS_BLEND_MODE;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_TRANSPARENCY_EXT_GS_CA;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_TRANSPARENCY_EXT_GS_SOFT_MASK;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_KEY_EXTGSTATE_ENTRY_REGEX;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_KEY_BLEND_MODE;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_KEY_LOWER_CA;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_KEY_UPPER_CA;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_VALUE_BM_COMPATIBLE;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_VALUE_BM_NORMAL;
-import static org.apache.pdfbox.preflight.PreflightConstants.TRANSPARENCY_DICTIONARY_VALUE_SOFT_MASK_NONE;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_COMMON;
 import static org.apache.pdfbox.preflight.PreflightConstants.ERROR_SYNTAX_NUMERIC_RANGE;
 import static org.apache.pdfbox.preflight.PreflightConstants.MAX_NEGATIVE_FLOAT;
@@ -46,7 +39,8 @@ import static org.apache.pdfbox.preflight.PreflightConstants.MAX_POSITIVE_FLOAT;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
@@ -59,7 +53,6 @@ import org.apache.pdfbox.preflight.PreflightPath;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
 import org.apache.pdfbox.preflight.exception.ValidationException;
 import org.apache.pdfbox.preflight.process.AbstractProcess;
-import org.apache.pdfbox.preflight.utils.COSUtils;
 import org.apache.pdfbox.preflight.utils.ContextHelper;
 
 public class ExtGStateValidationProcess extends AbstractProcess
@@ -87,7 +80,7 @@ public class ExtGStateValidationProcess extends AbstractProcess
         else
         {
             COSDictionary extGStatesDict = (COSDictionary) vPath.peek();
-            List<COSDictionary> listOfExtGState = extractExtGStateDictionaries(context, extGStatesDict);
+            List<COSDictionary> listOfExtGState = extractExtGStateDictionaries(extGStatesDict);
             validateTransparencyRules(context, listOfExtGState);
             validateFonts(context, listOfExtGState);
         }
@@ -96,25 +89,20 @@ public class ExtGStateValidationProcess extends AbstractProcess
     /**
      * Create a list of ExtGState dictionaries using the given Resource dictionary and the COSDocument.
      * 
-     * @param context the context which contains the Resource dictionary.
-     * @param egsEntry a resource COSDictionary.
+     * @param extGStates a resource COSDictionary.
      * @return the list of ExtGState dictionaries.
      * @throws ValidationException thrown if an Extended Graphic State isn't valid.
      */
-    public List<COSDictionary> extractExtGStateDictionaries(PreflightContext context, COSDictionary egsEntry)
+    public List<COSDictionary> extractExtGStateDictionaries(
+            COSDictionary extGStates)
             throws ValidationException
     {
         List<COSDictionary> listOfExtGState = new ArrayList<>(0);
-        COSDocument cosDocument = context.getDocument().getDocument();
-        COSDictionary extGStates = COSUtils.getAsDictionary(egsEntry, cosDocument);
-
         if (extGStates != null)
         {
-            for (Object object : extGStates.keySet())
+            for (COSName key : extGStates.keySet())
             {
-                COSName key = (COSName) object;
-                COSBase gsBase = extGStates.getItem(key);
-                COSDictionary gsDict = COSUtils.getAsDictionary(gsBase, cosDocument);
+                COSDictionary gsDict = extGStates.getCOSDictionary(key);
                 if (gsDict == null)
                 {
                     throw new ValidationException("The Extended Graphics State dictionary is invalid");
@@ -228,9 +216,7 @@ public class ExtGStateValidationProcess extends AbstractProcess
      */
     private void checkSoftMask(PreflightContext context, COSDictionary egs)
     {
-        COSBase smVal = egs.getItem(COSName.SMASK);
-        if (smVal != null && 
-                !(smVal instanceof COSName && TRANSPARENCY_DICTIONARY_VALUE_SOFT_MASK_NONE.equals(((COSName) smVal).getName())))
+        if (egs.containsKey(COSName.SMASK) && !COSName.NONE.equals(egs.getCOSName(COSName.SMASK)))
         {
             // ---- Soft Mask is valid only if it is a COSName equals to None
             context.addValidationError(new ValidationError(ERROR_TRANSPARENCY_EXT_GS_SOFT_MASK,
@@ -246,16 +232,12 @@ public class ExtGStateValidationProcess extends AbstractProcess
      */
     private void checkBlendMode(PreflightContext context, COSDictionary egs)
     {
-        COSBase bmVal = egs.getItem(TRANSPARENCY_DICTIONARY_KEY_BLEND_MODE);
-        if (bmVal != null)
+        COSName bmVal = egs.getCOSName(COSName.BM);
+        // ---- Blend Mode is valid only if it is equals to Normal or Compatible
+        if (bmVal != null && !(COSName.NORMAL.equals(bmVal) || COSName.COMPATIBLE.equals(bmVal)))
         {
-            // ---- Blend Mode is valid only if it is equals to Normal or Compatible
-            if (!(bmVal instanceof COSName && (TRANSPARENCY_DICTIONARY_VALUE_BM_NORMAL.equals(((COSName) bmVal)
-                    .getName()) || TRANSPARENCY_DICTIONARY_VALUE_BM_COMPATIBLE.equals(((COSName) bmVal).getName()))))
-            {
-                context.addValidationError(new ValidationError(ERROR_TRANSPARENCY_EXT_GS_BLEND_MODE,
-                        "BlendMode value isn't valid (only Normal and Compatible are authorized)"));
-            }
+            context.addValidationError(new ValidationError(ERROR_TRANSPARENCY_EXT_GS_BLEND_MODE,
+                    "BlendMode value isn't valid (only Normal and Compatible are authorized)"));
         }
     }
 
@@ -268,13 +250,12 @@ public class ExtGStateValidationProcess extends AbstractProcess
      */
     private void checkUpperCA(PreflightContext context, COSDictionary egs)
     {
-        COSBase uCA = egs.getItem(TRANSPARENCY_DICTIONARY_KEY_UPPER_CA);
+        COSBase uCA = egs.getDictionaryObject(COSName.CA);
         if (uCA != null)
         {
             // ---- If CA is present only the value 1.0 is authorized
-            COSDocument cosDocument = context.getDocument().getDocument();
-            Float fca = COSUtils.getAsFloat(uCA, cosDocument);
-            Integer ica = COSUtils.getAsInteger(uCA, cosDocument);
+            Float fca = uCA instanceof COSFloat ? ((COSFloat) uCA).floatValue() : null;
+            Integer ica = uCA instanceof COSInteger ? ((COSInteger) uCA).intValue() : null;
             if (!(fca != null && Float.compare(fca, 1.0f) == 0) && !(ica != null && ica == 1))
             {
                 context.addValidationError(new ValidationError(ERROR_TRANSPARENCY_EXT_GS_CA,
@@ -292,13 +273,12 @@ public class ExtGStateValidationProcess extends AbstractProcess
      */
     private void checkLowerCA(PreflightContext context, COSDictionary egs)
     {
-        COSBase lCA = egs.getItem(TRANSPARENCY_DICTIONARY_KEY_LOWER_CA);
+        COSBase lCA = egs.getDictionaryObject(COSName.CA_NS);
         if (lCA != null)
         {
             // ---- If ca is present only the value 1.0 is authorized
-            COSDocument cosDocument = context.getDocument().getDocument();
-            Float fca = COSUtils.getAsFloat(lCA, cosDocument);
-            Integer ica = COSUtils.getAsInteger(lCA, cosDocument);
+            Float fca = lCA instanceof COSFloat ? ((COSFloat) lCA).floatValue() : null;
+            Integer ica = lCA instanceof COSInteger ? ((COSInteger) lCA).intValue() : null;
             if (!(fca != null && Float.compare(fca, 1.0f) == 0) && !(ica != null && ica == 1))
             {
                 context.addValidationError(new ValidationError(ERROR_TRANSPARENCY_EXT_GS_CA,
@@ -315,7 +295,7 @@ public class ExtGStateValidationProcess extends AbstractProcess
      */
     protected void checkTRKey(PreflightContext context, COSDictionary egs)
     {
-        if (egs.getItem(COSName.TR) != null)
+        if (egs.containsKey(COSName.TR))
         {
             context.addValidationError(new ValidationError(ERROR_GRAPHIC_UNEXPECTED_KEY,
                     "No TR key expected in Extended graphics state"));
@@ -330,13 +310,14 @@ public class ExtGStateValidationProcess extends AbstractProcess
      */
     protected void checkTR2Key(PreflightContext context, COSDictionary egs)
     {
-        if (egs.getItem("TR2") != null)
+        if (egs.containsKey(COSName.TR2))
         {
-            String s = egs.getNameAsString("TR2");
+            String s = egs.getNameAsString(COSName.TR2);
             if (!"Default".equals(s))
             {
-                context.addValidationError(new ValidationError(ERROR_GRAPHIC_UNEXPECTED_VALUE_FOR_KEY,
-                        "TR2 key only expect 'Default' value, not '" + s + "'"));
+                context.addValidationError(
+                        new ValidationError(ERROR_GRAPHIC_UNEXPECTED_VALUE_FOR_KEY,
+                                "TR2 key only expect 'Default' value, not '" + s + "'"));
             }
         }
     }

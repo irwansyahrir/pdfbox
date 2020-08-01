@@ -23,6 +23,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,11 +47,11 @@ public final class GlyphList
      */
     private static GlyphList load(String filename, int numberOfEntries)
     {
-        ClassLoader loader = GlyphList.class.getClassLoader();
-        String path = "org/apache/pdfbox/resources/glyphlist/";
-        try
+        String path = "/org/apache/pdfbox/resources/glyphlist/";
+        //no need to use a BufferedInputSteam here, as GlyphList uses a BufferedReader
+        try (InputStream resourceAsStream = GlyphList.class.getResourceAsStream(path + filename))
         {
-            return new GlyphList(loader.getResourceAsStream(path + filename), numberOfEntries);
+            return new GlyphList(resourceAsStream, numberOfEntries);
         }
         catch (IOException e)
         {
@@ -130,7 +131,7 @@ public final class GlyphList
 
     private void loadList(InputStream input) throws IOException
     {
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(input, "ISO-8859-1")))
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(input, StandardCharsets.ISO_8859_1)))
         {
             while (in.ready())
             {

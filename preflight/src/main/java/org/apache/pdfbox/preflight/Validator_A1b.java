@@ -29,7 +29,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import javax.activation.FileDataSource;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.OutputKeys;
@@ -39,9 +38,7 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.preflight.ValidationResult.ValidationError;
-import org.apache.pdfbox.preflight.exception.SyntaxValidationException;
 import org.apache.pdfbox.preflight.parser.PreflightParser;
 import org.apache.pdfbox.preflight.parser.XmlResultParser;
 import org.apache.pdfbox.util.Version;
@@ -51,7 +48,7 @@ import org.w3c.dom.Element;
 /**
  * This class is a simple main class used to check the validity of a pdf file.
  * 
- * Usage : java net.awl.edoc.pdfa.Validator &lt;file path&gt;
+ * Usage : java org.apache.pdfbox.preflight.Validator_A1b &lt;file path&gt;
  * 
  * @author gbailleul
  * 
@@ -66,17 +63,6 @@ public class Validator_A1b
         {
             usage();
             System.exit(1);
-        }
-
-        try
-        {
-            // force KCMS (faster than LCMS) if available
-            Class.forName("sun.java2d.cmm.kcms.KcmsServiceProvider");
-            System.setProperty("sun.java2d.cmm", "sun.java2d.cmm.kcms.KcmsServiceProvider");
-        }
-        catch (ClassNotFoundException e)
-        {
-            // ignore
         }
 
         // is output xml ?
@@ -106,19 +92,21 @@ public class Validator_A1b
             }
             else
             {
+                @SuppressWarnings({"squid:S4435"}) // self-created XML
                 Transformer transformer = TransformerFactory.newInstance().newTransformer();
                 transformer.setOutputProperty(OutputKeys.INDENT, "yes");
                 transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
                 XmlResultParser xrp = new XmlResultParser();
                 if (isGroup)
                 {
+                    @SuppressWarnings({"squid:S2755"}) // self-created XML
                     Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
                     Element root = document.createElement("preflights");
                     document.appendChild(root);
                     root.setAttribute("count", String.format("%d", ftp.size()));
                     for (File file : ftp)
                     {
-                        Element result = xrp.validate(document,new FileDataSource(file));
+                        Element result = xrp.validate(document, file);
                         root.appendChild(result);
                     }
                     transformer.transform(new DOMSource(document), 
@@ -129,7 +117,7 @@ public class Validator_A1b
                     // isBatch
                     for (File file : ftp)
                     {
-                        Element result = xrp.validate(new FileDataSource(file));
+                        Element result = xrp.validate(file);
                         Document document = result.getOwnerDocument();
                         document.appendChild(result);
                         transformer.transform(new DOMSource(document), 
@@ -149,9 +137,10 @@ public class Validator_A1b
             {
                 // generate xml output
                 XmlResultParser xrp = new XmlResultParser();
-                Element result = xrp.validate(new FileDataSource(args[posFile]));
+                Element result = xrp.validate(new File(args[posFile]));
                 Document document = result.getOwnerDocument();
                 document.appendChild(result);
+                @SuppressWarnings({"squid:S4435"}) // self-created XML
                 Transformer transformer = TransformerFactory.newInstance().newTransformer();
                 transformer.setOutputProperty(OutputKeys.INDENT, "yes");
                 transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
@@ -161,7 +150,7 @@ public class Validator_A1b
 
     }
 
-    private static void usage() throws IOException 
+    private static void usage()
     {
         String version = Version.getVersion();
 
@@ -176,20 +165,7 @@ public class Validator_A1b
 
     private static int runSimple(File file) throws IOException
     {
-        ValidationResult result;
-        PreflightParser parser = new PreflightParser(file);
-        try
-        {
-            parser.parse();
-            PreflightDocument document = parser.getPreflightDocument();
-            document.validate();
-            result = document.getResult();
-            document.close();
-        }
-        catch (SyntaxValidationException e)
-        {
-            result = e.getResult();
-        }
+        ValidationResult result = PreflightParser.validate(file);
 
         if (result.isValid())
         {
@@ -226,16 +202,17 @@ public class Validator_A1b
         if (f.isFile())
         {
             FileReader fr = new FileReader(f);
-            BufferedReader buf = new BufferedReader(fr);
-            while (buf.ready())
+            try (BufferedReader bufferedReader = new BufferedReader(fr))
             {
-                File fn = new File(buf.readLine());
-                if (fn.exists())
+                while (bufferedReader.ready())
                 {
-                    files.add(fn);
-                } // else warn ?
+                    File fn = new File(bufferedReader.readLine());
+                    if (fn.exists())
+                    {
+                        files.add(fn);
+                    } // else warn ?
+                }
             }
-            IOUtils.closeQuietly(buf);
         }
         else
         {

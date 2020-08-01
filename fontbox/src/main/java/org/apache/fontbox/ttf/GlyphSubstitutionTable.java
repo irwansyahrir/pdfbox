@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -145,6 +144,14 @@ public class GlyphSubstitutionTable extends TTFTable
         for (int i = 0; i < langSysCount; i++)
         {
             langSysTags[i] = data.readString(4);
+            if (i > 0 && langSysTags[i].compareTo(langSysTags[i-1]) <= 0)
+            {
+                // PDFBOX-4489: catch corrupt file
+                // https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#slTbl_sRec
+                LOG.error("LangSysRecords not alphabetically sorted by LangSys tag: " +
+                          langSysTags[i] + " <= " + langSysTags[i - 1]);
+                return new ScriptTable(null, new LinkedHashMap<>());
+            }
             langSysOffsets[i] = data.readUnsignedShort();
         }
 
@@ -193,6 +200,24 @@ public class GlyphSubstitutionTable extends TTFTable
         for (int i = 0; i < featureCount; i++)
         {
             featureTags[i] = data.readString(4);
+            if (i > 0 && featureTags[i].compareTo(featureTags[i-1]) < 0)
+            {
+                // catch corrupt file
+                // https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#flTbl
+                if (featureTags[i].matches("\\w{4}") && featureTags[i-1].matches("\\w{4}"))
+                {
+                    // ArialUni.ttf has many warnings but isn't corrupt, so we assume that only
+                    // strings with trash characters indicate real corruption
+                    LOG.debug("FeatureRecord array not alphabetically sorted by FeatureTag: " +
+                              featureTags[i] + " < " + featureTags[i - 1]);
+                }
+                else
+                {
+                    LOG.warn("FeatureRecord array not alphabetically sorted by FeatureTag: " +
+                              featureTags[i] + " < " + featureTags[i - 1]);
+                    return new FeatureListTable(0, new FeatureRecord[0]);
+                }
+            }
             featureOffsets[i] = data.readUnsignedShort();
         }
         for (int i = 0; i < featureCount; i++)
@@ -257,13 +282,17 @@ public class GlyphSubstitutionTable extends TTFTable
         LookupSubTable[] subTables = new LookupSubTable[subTableCount];
         switch (lookupType)
         {
-        case 1: // Single
+        case 1:
+            // Single
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#SS
             for (int i = 0; i < subTableCount; i++)
             {
                 subTables[i] = readLookupSubTable(data, offset + subTableOffets[i]);
             }
             break;
-        case 4: // Ligature Substitution Subtable
+        case 4:
+            // Ligature Substitution Subtable
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#LS
             for (int i = 0; i < subTableCount; i++)
             {
                 subTables[i] = readLigatureSubstitutionSubtable(data, offset + subTableOffets[i]);
@@ -285,6 +314,8 @@ public class GlyphSubstitutionTable extends TTFTable
         {
         case 1:
         {
+            // LookupType 1: Single Substitution Subtable
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#11-single-substitution-format-1
             int coverageOffset = data.readUnsignedShort();
             short deltaGlyphID = data.readSignedShort();
             CoverageTable coverageTable = readCoverageTable(data, offset + coverageOffset);
@@ -292,6 +323,8 @@ public class GlyphSubstitutionTable extends TTFTable
         }
         case 2:
         {
+            // Single Substitution Format 2
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#12-single-substitution-format-2
             int coverageOffset = data.readUnsignedShort();
             int glyphCount = data.readUnsignedShort();
             int[] substituteGlyphIDs = new int[glyphCount];
@@ -303,7 +336,7 @@ public class GlyphSubstitutionTable extends TTFTable
             return new LookupTypeSingleSubstFormat2(substFormat, coverageTable, substituteGlyphIDs);
         }
         default:
-            throw new IllegalArgumentException("Unknown substFormat: " + substFormat);
+            throw new IOException("Unknown substFormat: " + substFormat);
         }
     }
 
@@ -315,7 +348,7 @@ public class GlyphSubstitutionTable extends TTFTable
 
         if (substFormat != 1)
         {
-            throw new IllegalArgumentException(
+            throw new IOException(
                     "The expected SubstFormat for LigatureSubstitutionTable is 1");
         }
 
@@ -333,7 +366,7 @@ public class GlyphSubstitutionTable extends TTFTable
 
         if (ligSetCount != coverageTable.getSize())
         {
-            throw new IllegalArgumentException(
+            throw new IOException(
                     "According to the OpenTypeFont specifications, the coverage count should be equal to the no. of LigatureSetTables");
         }
 
@@ -389,7 +422,10 @@ public class GlyphSubstitutionTable extends TTFTable
 
         int[] componentGlyphIDs = new int[componentCount];
 
-        componentGlyphIDs[0] = coverageGlyphId;
+        if (componentCount > 0)
+        {
+            componentGlyphIDs[0] = coverageGlyphId;
+        }
 
         for (int i = 1; i <= componentCount - 1; i++)
         {
@@ -431,7 +467,7 @@ public class GlyphSubstitutionTable extends TTFTable
         }
         default:
             // Should not happen (the spec indicates only format 1 and format 2)
-            throw new IllegalArgumentException("Unknown coverage format: " + coverageFormat);
+            throw new IOException("Unknown coverage format: " + coverageFormat);
         }
     }
 
@@ -503,7 +539,7 @@ public class GlyphSubstitutionTable extends TTFTable
      *
      * @param langSysTables The {@code LangSysTable}s indicating {@code FeatureRecord}s to search
      * for
-     * @param enabledFeatures An optional whitelist of feature tags ({@code null} to allow all)
+     * @param enabledFeatures An optional list of feature tags ({@code null} to allow all)
      * @return The indicated {@code FeatureRecord}s
      */
     private List<FeatureRecord> getFeatureRecords(Collection<LangSysTable> langSysTables,
@@ -514,23 +550,24 @@ public class GlyphSubstitutionTable extends TTFTable
             return Collections.emptyList();
         }
         List<FeatureRecord> result = new ArrayList<>();
-        for (LangSysTable langSysTable : langSysTables)
+        langSysTables.forEach(langSysTable ->
         {
             int required = langSysTable.getRequiredFeatureIndex();
-            if (required != 0xffff) // if no required features = 0xFFFF
+            FeatureRecord[] featureRecords = featureListTable.getFeatureRecords();
+            if (required != 0xffff && required < featureRecords.length) // if no required features = 0xFFFF
             {
-                result.add(featureListTable.getFeatureRecords()[required]);
+                result.add(featureRecords[required]);
             }
             for (int featureIndex : langSysTable.getFeatureIndices())
             {
-                if (enabledFeatures == null
-                        || enabledFeatures.contains(
-                                featureListTable.getFeatureRecords()[featureIndex].getFeatureTag()))
+                if (featureIndex < featureRecords.length &&
+                        (enabledFeatures == null ||
+                         enabledFeatures.contains(featureRecords[featureIndex].getFeatureTag())))
                 {
-                    result.add(featureListTable.getFeatureRecords()[featureIndex]);
+                    result.add(featureRecords[featureIndex]);
                 }
             }
-        }
+        });
 
         // 'vrt2' supersedes 'vert' and they should not be used together
         // https://www.microsoft.com/typography/otspec/features_uz.htm
@@ -541,15 +578,9 @@ public class GlyphSubstitutionTable extends TTFTable
 
         if (enabledFeatures != null && result.size() > 1)
         {
-            Collections.sort(result, new Comparator<FeatureRecord>()
-            {
-                @Override
-                public int compare(FeatureRecord o1, FeatureRecord o2)
-                {
-                    return Integer.compare(enabledFeatures.indexOf(o1.getFeatureTag()),
-                            enabledFeatures.indexOf(o2.getFeatureTag()));
-                }
-            });
+            Collections.sort(result, 
+                    (o1, o2) -> Integer.compare(enabledFeatures.indexOf(o1.getFeatureTag()),
+                                                enabledFeatures.indexOf(o2.getFeatureTag())));
         }
 
         return result;
@@ -557,14 +588,8 @@ public class GlyphSubstitutionTable extends TTFTable
 
     private boolean containsFeature(List<FeatureRecord> featureRecords, String featureTag)
     {
-        for (FeatureRecord featureRecord : featureRecords)
-        {
-            if (featureRecord.getFeatureTag().equals(featureTag))
-            {
-                return true;
-            }
-        }
-        return false;
+        return featureRecords.stream().anyMatch(
+                   featureRecord -> featureRecord.getFeatureTag().equals(featureTag));
     }
 
     private void removeFeature(List<FeatureRecord> featureRecords, String featureTag)
@@ -612,8 +637,8 @@ public class GlyphSubstitutionTable extends TTFTable
 
     /**
      * Apply glyph substitutions to the supplied gid. The applicable substitutions are determined by
-     * the {@code scriptTags} which indicate the language of the gid, and by the
-     * {@code enabledFeatures} which acts as a whitelist.
+     * the {@code scriptTags} which indicate the language of the gid, and by the list of
+     * {@code enabledFeatures}.
      *
      * To ensure that a single gid isn't mapped to multiple substitutions, subsequent invocations
      * with the same gid will return the same result as the first, regardless of script or enabled
@@ -621,7 +646,7 @@ public class GlyphSubstitutionTable extends TTFTable
      *
      * @param gid GID
      * @param scriptTags Script tags applicable to the gid (see {@link OpenTypeScript})
-     * @param enabledFeatures Whitelist of features to apply
+     * @param enabledFeatures list of features to apply
      */
     public int getSubstitution(int gid, String[] scriptTags, List<String> enabledFeatures)
     {

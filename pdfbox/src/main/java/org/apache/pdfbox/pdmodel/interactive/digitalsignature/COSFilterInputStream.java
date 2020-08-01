@@ -25,7 +25,10 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.io.IOUtils;
 
-
+/**
+ * A filtered stream that includes the bytes that are in the (begin,length) intervals passed in the
+ * constructor.
+ */
 public class COSFilterInputStream extends FilterInputStream
 {
   /**
@@ -96,12 +99,12 @@ public class COSFilterInputStream extends FilterInputStream
     }
     catch (IOException ee) 
     {
-      LOG.debug("An exception occured while trying to fill byte[] - ignoring", ee);
+      LOG.debug("An exception occurred while trying to fill byte[] - ignoring", ee);
     }
     return i;
   }
 
-  private boolean inRange() throws IOException
+  private boolean inRange()
   {
     long pos = position;
     for (int i = 0; i<byteRange.length/2;++i)
